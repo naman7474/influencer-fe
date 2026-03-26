@@ -21,6 +21,7 @@ export default async function CreatorProfilePage({
   return (
     <CreatorProfileClient
       profile={profile}
+      brandName={brand.brand_name}
       shopifyConnected={brand.shopify_connected}
       shopifySyncStatus={brand.shopify_sync_status}
     />

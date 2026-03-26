@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, MapPinned, ShoppingBag } from "lucide-react";
+import { ArrowUpRight, LoaderCircle, MapPinned, ShoppingBag } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,11 +9,75 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ScoreRing } from "@/components/shared/visuals";
 import { createClient } from "@/lib/supabase/server";
 import { requireBrandContext } from "@/lib/queries/brand";
 import { getGeoOverview } from "@/lib/queries/geo";
 import { humanize } from "@/lib/constants";
+
+function GeoStatusBanner({
+  tone,
+  icon,
+  title,
+  description,
+  ctaLabel,
+}: {
+  tone: "default" | "warning" | "error";
+  icon?: React.ReactNode;
+  title: string;
+  description: string;
+  ctaLabel?: string;
+}) {
+  const toneClassName =
+    tone === "error"
+      ? "border-rose-200 bg-rose-50 text-rose-900"
+      : tone === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-900"
+        : "border-border bg-muted/40 text-foreground";
+
+  return (
+    <div className={`flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${toneClassName}`}>
+      <div className="flex items-start gap-3">
+        {icon ? <div className="mt-0.5 shrink-0">{icon}</div> : null}
+        <div>
+          <p className="text-sm font-medium">{title}</p>
+          <p className="mt-1 text-sm opacity-80">{description}</p>
+        </div>
+      </div>
+      {ctaLabel ? (
+        <Link href="/settings">
+          <Button size="sm" variant="outline">
+            {ctaLabel}
+          </Button>
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+function EmptyGeoState({
+  title,
+  description,
+  ctaLabel,
+}: {
+  title: string;
+  description: string;
+  ctaLabel: string;
+}) {
+  return (
+    <div className="grid min-h-[320px] place-items-center rounded-2xl border border-dashed bg-muted/20 px-6 py-12 text-center">
+      <div className="max-w-md">
+        <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-background text-muted-foreground">
+          <ShoppingBag className="h-5 w-5" />
+        </div>
+        <p className="mt-4 text-lg font-semibold text-foreground">{title}</p>
+        <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+        <Link href="/settings" className="mt-5 inline-flex">
+          <Button>{ctaLabel}</Button>
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 export default async function GeoPage() {
   const supabase = await createClient();
@@ -25,44 +89,26 @@ export default async function GeoPage() {
   if (!geo.shopify_connected) {
     return (
       <div className="space-y-6">
-        <section className="space-y-1">
-          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr] xl:items-center">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">
-                Geo Intelligence
-              </p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-                Geo matching needs Shopify store data.
-              </h1>
-              <p className="mt-3 text-sm text-muted-foreground">
-                Without Shopify, there are no sessions, orders, or market gaps to score. Connect a store or add an admin access token in settings first.
-              </p>
-            </div>
-
-            <Card className="border bg-primary text-primary-foreground">
-              <CardHeader>
-                <CardTitle className="text-primary-foreground">Shopify connection</CardTitle>
-                <CardDescription className="text-primary-foreground/60">
-                  Geo scoring turns live after store sync.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex items-center justify-between gap-6">
-                <ScoreRing
-                  value={28}
-                  label="Setup progress"
-                  sublabel="Shopify missing"
-                  tone="#6366f1"
-                />
-                <Link href="/settings">
-                  <Button size="lg" variant="secondary">
-                    <ShoppingBag className="h-4 w-4" />
-                    Connect Shopify
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-          </div>
+        <section className="space-y-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            Geo Intelligence
+          </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            Regional performance and creator recommendations
+          </h1>
+          <GeoStatusBanner
+            tone="default"
+            title="Connect Shopify to unlock geo intelligence."
+            description="Geo scoring needs live Shopify sessions, orders, and revenue data before it can surface market gaps."
+            ctaLabel="Go to Settings"
+          />
         </section>
+
+        <EmptyGeoState
+          title="No geo data yet"
+          description="Connect a Shopify store and run the first sync to generate opportunity regions and regional creator recommendations."
+          ctaLabel="Connect Shopify"
+        />
       </div>
     );
   }
@@ -70,44 +116,27 @@ export default async function GeoPage() {
   if (isSyncing) {
     return (
       <div className="space-y-6">
-        <section className="space-y-1">
-          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr] xl:items-center">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">
-                Geo Intelligence
-              </p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-                Shopify sync is running.
-              </h1>
-              <p className="mt-3 text-sm text-muted-foreground">
-                We are pulling the latest orders, analytics sessions, and products from Shopify. Geo opportunity and creator recommendations will populate after the sync finishes.
-              </p>
-            </div>
-
-            <Card className="border bg-primary text-primary-foreground">
-              <CardHeader>
-                <CardTitle className="text-primary-foreground">Background sync</CardTitle>
-                <CardDescription className="text-primary-foreground/60">
-                  Store {geo.store_url || "connected"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex items-center justify-between gap-6">
-                <ScoreRing
-                  value={64}
-                  label="Sync status"
-                  sublabel={geo.sync_status === "queued" ? "Queued" : "Running"}
-                  tone="#6366f1"
-                />
-                <Link href="/settings">
-                  <Button size="lg" variant="secondary">
-                    <ShoppingBag className="h-4 w-4" />
-                    Manage Shopify
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-          </div>
+        <section className="space-y-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            Geo Intelligence
+          </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            Regional performance and creator recommendations
+          </h1>
+          <GeoStatusBanner
+            tone="warning"
+            icon={<LoaderCircle className="h-4 w-4 animate-spin" />}
+            title="Shopify sync in progress..."
+            description="We are pulling the latest store data. Geo opportunities and recommendations will populate as soon as sync completes."
+            ctaLabel="Manage Shopify"
+          />
         </section>
+
+        <EmptyGeoState
+          title="Syncing Shopify data"
+          description="This page will fill in automatically after the background sync finishes."
+          ctaLabel="Open Settings"
+        />
       </div>
     );
   }
@@ -115,89 +144,83 @@ export default async function GeoPage() {
   if (geo.sync_status === "failed" && geo.rows.length === 0) {
     return (
       <div className="space-y-6">
-        <section className="space-y-1">
-          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr] xl:items-center">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">
-                Geo Intelligence
-              </p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-                Shopify sync failed.
-              </h1>
-              <p className="mt-3 text-sm text-muted-foreground">
-                {geo.sync_error || "The last Shopify sync did not complete. Check the store URL and admin token, then retry from settings."}
-              </p>
-            </div>
-
-            <Card className="border bg-primary text-primary-foreground">
-              <CardHeader>
-                <CardTitle className="text-primary-foreground">Retry sync</CardTitle>
-                <CardDescription className="text-primary-foreground/60">
-                  Update credentials or trigger a fresh sync.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex items-center justify-between gap-6">
-                <ScoreRing
-                  value={18}
-                  label="Sync status"
-                  sublabel="Failed"
-                  tone="#ef4444"
-                />
-                <Link href="/settings">
-                  <Button size="lg" variant="secondary">
-                    <ShoppingBag className="h-4 w-4" />
-                    Open settings
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-          </div>
+        <section className="space-y-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            Geo Intelligence
+          </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            Regional performance and creator recommendations
+          </h1>
+          <GeoStatusBanner
+            tone="error"
+            title="Sync failed."
+            description={geo.sync_error || "The last Shopify sync did not complete. Check the store URL and token, then retry from settings."}
+            ctaLabel="Retry in Settings"
+          />
         </section>
+
+        <EmptyGeoState
+          title="Geo sync needs attention"
+          description="Update the Shopify connection and rerun sync before this page can show regional gaps."
+          ctaLabel="Open Settings"
+        />
       </div>
     );
   }
 
+  const showEmptySyncedState = geo.rows.length === 0;
+
   return (
     <div className="space-y-6">
-      <section className="space-y-1">
-        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr] xl:items-center">
+      <section className="space-y-3">
+        <p className="text-xs font-medium text-muted-foreground">
+          Geo Intelligence
+        </p>
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="text-xs font-medium text-muted-foreground">
-              Geo Intelligence
-            </p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
               Regional performance and creator recommendations
             </h1>
-            <p className="mt-3 text-sm text-muted-foreground">
+            <p className="mt-2 text-sm text-muted-foreground">
               Market opportunities based on your Shopify orders and session data.
             </p>
           </div>
-
-          <Card className="border bg-primary text-primary-foreground">
-            <CardHeader>
-              <CardTitle className="text-primary-foreground">Shopify sync</CardTitle>
-              <CardDescription className="text-primary-foreground/60">
-                Store {geo.store_url || "connected"}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex items-center justify-between gap-6">
-              <ScoreRing
-                value={geo.rows.length > 0 ? 88 : 52}
-                label="Geo readiness"
-                sublabel={geo.last_sync_at ? "Synced" : "Awaiting first sync"}
-                tone="#22c55e"
-              />
-              <Link href="/settings">
-                <Button size="lg" variant="secondary">
-                  <ShoppingBag className="h-4 w-4" />
-                  Manage Shopify
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <Badge variant="secondary">
+              {geo.rows.length} regions
+            </Badge>
+            <span>
+              Last synced:{" "}
+              {geo.last_sync_at
+                ? new Date(geo.last_sync_at).toLocaleString()
+                : "Not yet"}
+            </span>
+            <Link href="/settings">
+              <Button size="sm" variant="outline">
+                Manage Shopify
+              </Button>
+            </Link>
+          </div>
         </div>
+        {geo.sync_status === "failed" ? (
+          <GeoStatusBanner
+            tone="error"
+            title="Latest sync failed."
+            description={geo.sync_error || "Some geo data may be stale until the next successful sync."}
+            ctaLabel="Retry in Settings"
+          />
+        ) : null}
       </section>
 
+      {showEmptySyncedState ? (
+        <EmptyGeoState
+          title="No regional rows yet"
+          description="The store is connected, but the sync has not produced geo rows yet. Trigger another sync from settings if needed."
+          ctaLabel="Manage Shopify"
+        />
+      ) : null}
+
+      {!showEmptySyncedState ? (
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <Card className="border bg-card">
           <CardHeader>
@@ -260,7 +283,9 @@ export default async function GeoPage() {
           </CardContent>
         </Card>
       </div>
+      ) : null}
 
+      {!showEmptySyncedState ? (
       <Card className="border bg-card">
         <CardHeader>
           <CardTitle>Region to creator recommendations</CardTitle>
@@ -308,6 +333,7 @@ export default async function GeoPage() {
           ))}
         </CardContent>
       </Card>
+      ) : null}
     </div>
   );
 }

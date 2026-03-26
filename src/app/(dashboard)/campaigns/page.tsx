@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CheckCircle2, ClipboardList, Coins, Megaphone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -88,14 +89,19 @@ export default async function CampaignsPage() {
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-foreground">
+                        <Link
+                          href={`/campaigns/${campaign.id}`}
+                          className="text-sm font-semibold text-foreground underline-offset-4 hover:underline"
+                        >
                           {campaign.name}
-                        </p>
+                        </Link>
                         <Badge variant="secondary">{campaign.goal}</Badge>
                         <Badge variant="outline">{campaign.status}</Badge>
                       </div>
                       <p className="mt-2 text-xs text-muted-foreground">
-                        {campaign.creators} creators · ROI {campaign.roi || "N/A"}x
+                        {campaign.creators} creators · Revenue ₹
+                        {Math.round(Number(campaign.revenue ?? 0)).toLocaleString()} · ROI{" "}
+                        {campaign.roi || "N/A"}x
                       </p>
                     </div>
                     <div className="min-w-[220px]">

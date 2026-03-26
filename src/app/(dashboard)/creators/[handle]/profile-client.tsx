@@ -1,16 +1,18 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   BadgeCheck,
-  Download,
   HeartHandshake,
   MapPinned,
   Megaphone,
   MessageCircleMore,
+  Plus,
   ShieldCheck,
 } from "lucide-react";
+import { toast } from "@/components/shared/toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,12 +44,15 @@ import {
   humanize,
   normalizePercentValue,
 } from "@/lib/constants";
+import { AddToCampaignDialog } from "./add-to-campaign-dialog";
+import { QuickOutreachDialog } from "./quick-outreach";
 
 type DistributionSource =
   | Record<string, number>
   | Array<{ label?: string; name?: string; type?: string; value?: number; percentage?: number; score?: number }>;
 
 interface ProfileCreator {
+  id: string;
   avatar_url?: string;
   handle?: string;
   is_verified?: boolean;
@@ -60,6 +65,7 @@ interface ProfileCreator {
   followers?: number;
   posts_count?: number;
   following?: number;
+  contact_email?: string | null;
 }
 
 interface ProfileScores {
@@ -156,6 +162,9 @@ interface Props {
     transcriptIntel: TranscriptIntel | null;
     audienceIntel: AudienceIntel | null;
     posts: ProfilePost[];
+    shortlistItem: {
+      id: string;
+    } | null;
     brandMatch: {
       match_score?: number;
       niche_fit_score?: number;
@@ -173,6 +182,7 @@ interface Props {
       }>;
     } | null;
   };
+  brandName: string;
   shopifyConnected: boolean;
   shopifySyncStatus: string;
 }
@@ -181,13 +191,21 @@ type PostFilter = "all" | "video" | "image" | "carousel" | "sponsored";
 
 export function CreatorProfileClient({
   profile,
+  brandName,
   shopifyConnected,
   shopifySyncStatus,
 }: Props) {
+  const router = useRouter();
+  const [isShortlistPending, startShortlistTransition] = useTransition();
   const { creator, scores, captionIntel, transcriptIntel, audienceIntel, posts } =
     profile;
   const [postFilter, setPostFilter] = useState<PostFilter>("all");
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
+  const [isQuickOutreachOpen, setIsQuickOutreachOpen] = useState(false);
+  const [isAddToCampaignOpen, setIsAddToCampaignOpen] = useState(false);
+  const [shortlistItemId, setShortlistItemId] = useState<string | null>(
+    profile.shortlistItem?.id ?? null
+  );
 
   const engagementSparkline = posts
     .slice()
@@ -235,6 +253,52 @@ export function CreatorProfileClient({
         }))
         .filter((item) => item.label)
     : [];
+
+  const creatorHandle = creator.handle ?? "";
+  const creatorName = creator.display_name || creatorHandle || "Unnamed creator";
+
+  const toggleShortlist = () => {
+    startShortlistTransition(async () => {
+      const response = await fetch(
+        shortlistItemId
+          ? `/api/v1/brands/current/shortlist/items/${shortlistItemId}`
+          : "/api/v1/brands/current/shortlist/items",
+        shortlistItemId
+          ? { method: "DELETE" }
+          : {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                creator_id: creator.id,
+                source: "profile",
+              }),
+            }
+      );
+      const payload = await response.json();
+
+      if (!response.ok) {
+        toast.error(
+          payload.error?.message ??
+            (shortlistItemId
+              ? "Unable to remove creator from shortlist."
+              : "Unable to shortlist creator.")
+        );
+        return;
+      }
+
+      if (shortlistItemId) {
+        setShortlistItemId(null);
+        toast.success("Removed from shortlist.");
+      } else {
+        setShortlistItemId(payload.data?.shortlist_item_id ?? null);
+        toast.success("Added to shortlist.");
+      }
+
+      router.refresh();
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -294,17 +358,24 @@ export function CreatorProfileClient({
                 )}
 
                 <div className="mt-5 flex flex-wrap gap-3">
-                  <Button>
+                  <Button onClick={() => setIsQuickOutreachOpen(true)}>
                     <Megaphone className="h-4 w-4" />
+                    Reach out
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsAddToCampaignOpen(true)}
+                  >
+                    <Plus className="h-4 w-4" />
                     Add to campaign
                   </Button>
-                  <Button variant="outline">
+                  <Button
+                    variant={shortlistItemId ? "secondary" : "outline"}
+                    onClick={toggleShortlist}
+                    disabled={isShortlistPending}
+                  >
                     <HeartHandshake className="h-4 w-4" />
-                    Shortlist
-                  </Button>
-                  <Button variant="outline">
-                    <Download className="h-4 w-4" />
-                    Export PDF
+                    {shortlistItemId ? "Shortlisted" : "Shortlist"}
                   </Button>
                 </div>
               </div>
@@ -344,7 +415,7 @@ export function CreatorProfileClient({
             </div>
           </div>
 
-          <div className="flex flex-col items-center gap-3 rounded-lg border bg-primary text-primary-foreground px-5 py-5">
+          <div className="flex flex-col items-center gap-4 rounded-lg border bg-primary px-5 py-5 text-primary-foreground">
             <ScoreRing
               value={scores?.cpi ?? 0}
               label="CPI Score"
@@ -352,24 +423,29 @@ export function CreatorProfileClient({
               size="lg"
               tone="#fb923c"
             />
-            <div className="w-full rounded-md bg-primary-foreground/10 px-3 py-3 text-sm text-primary-foreground/80">
-              <p className="font-semibold text-white">
-                {creator.city || creator.country
-                  ? `${creator.city ? `${creator.city}, ` : ""}${creator.country ?? ""}`
-                  : "Location pending"}
-              </p>
-              <p className="mt-1">
-                {creator.following
-                  ? `${formatNumber(creator.following)} following`
-                  : "Following count unavailable"}
-              </p>
-              <div className="mt-3">
-                <CPIBadge score={scores?.cpi ?? 0} size="md" />
-              </div>
-            </div>
+            <CPIBadge score={scores?.cpi ?? 0} size="md" />
           </div>
         </div>
       </section>
+
+      <QuickOutreachDialog
+        open={isQuickOutreachOpen}
+        onOpenChange={setIsQuickOutreachOpen}
+        brandName={brandName}
+        creator={{
+          id: creator.id,
+          handle: creatorHandle,
+          displayName: creatorName,
+          contactEmail: creator.contact_email ?? null,
+        }}
+      />
+
+      <AddToCampaignDialog
+        open={isAddToCampaignOpen}
+        onOpenChange={setIsAddToCampaignOpen}
+        creatorId={creator.id}
+        creatorLabel={`@${creatorHandle}`}
+      />
 
       <Tabs defaultValue="performance" className="space-y-5">
         <TabsList

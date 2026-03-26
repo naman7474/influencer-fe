@@ -53,6 +53,7 @@ export async function getBrandContext(
     industry: data.industry,
     website: data.website,
     shopify_connected: Boolean(data.shopify_connected),
+    instagram_connected: Boolean(data.instagram_connected),
     billing_plan: toBillingPlan(null),
     user_role: "owner",
     feature_flags: {
@@ -60,6 +61,7 @@ export async function getBrandContext(
       campaigns_enabled: true,
       billing_enabled: true,
       brand_fit_enabled: true,
+      inbound_enabled: Boolean(data.instagram_connected),
     },
     onboarding_step: data.onboarding_step ?? 0,
     shopify_store_url: data.shopify_store_url,
@@ -69,6 +71,7 @@ export async function getBrandContext(
     shopify_sync_error: data.shopify_sync_error ?? null,
     shopify_sync_started_at: data.shopify_sync_started_at ?? null,
     shopify_sync_completed_at: data.shopify_sync_completed_at ?? null,
+    instagram_connected_at: data.instagram_connected_at ?? null,
     created_at: data.created_at,
     updated_at: data.updated_at,
   };

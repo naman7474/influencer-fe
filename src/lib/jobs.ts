@@ -1,6 +1,12 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
-export type BackgroundJobType = "shopify_sync" | "brand_matching";
+export type BackgroundJobType =
+  | "shopify_sync"
+  | "brand_matching"
+  | "outreach_send"
+  | "outreach_followup"
+  | "instagram_sync"
+  | "campaign_attribution";
 
 export async function enqueueBackgroundJob(
   jobType: BackgroundJobType,
@@ -55,4 +61,32 @@ export async function enqueueBackgroundJob(
 
 export async function triggerShopifySyncJob(brandId: string) {
   return enqueueBackgroundJob("shopify_sync", brandId);
+}
+
+export async function triggerOutreachSendJob(
+  brandId: string,
+  payload: Record<string, unknown> = {}
+) {
+  return enqueueBackgroundJob("outreach_send", brandId, payload);
+}
+
+export async function triggerOutreachFollowupJob(
+  brandId: string,
+  payload: Record<string, unknown> = {}
+) {
+  return enqueueBackgroundJob("outreach_followup", brandId, payload);
+}
+
+export async function triggerInstagramSyncJob(
+  brandId: string,
+  payload: Record<string, unknown> = {}
+) {
+  return enqueueBackgroundJob("instagram_sync", brandId, payload);
+}
+
+export async function triggerCampaignAttributionJob(
+  brandId: string,
+  payload: Record<string, unknown> = {}
+) {
+  return enqueueBackgroundJob("campaign_attribution", brandId, payload);
 }

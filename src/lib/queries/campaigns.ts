@@ -25,7 +25,7 @@ export async function getCampaignsOverview(
     campaignIds.length > 0
       ? supabase
           .from("campaign_performance")
-          .select("campaign_id, roi_ratio, campaign_sessions, campaign_orders")
+          .select("campaign_id, roi_ratio, campaign_sessions, campaign_orders, revenue_attributed")
           .in("campaign_id", campaignIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
@@ -42,21 +42,30 @@ export async function getCampaignsOverview(
 
   const performanceByCampaign = new Map<
     string,
-    { roi: number; sessions: number; orders: number }
+    { roi: number; sessions: number; orders: number; revenue: number }
   >();
   for (const row of performanceRes.data ?? []) {
+    const current = performanceByCampaign.get(row.campaign_id) ?? {
+      roi: 0,
+      sessions: 0,
+      orders: 0,
+      revenue: 0,
+    };
     performanceByCampaign.set(row.campaign_id, {
-      roi: Number(row.roi_ratio ?? 0),
-      sessions: Number(row.campaign_sessions ?? 0),
-      orders: Number(row.campaign_orders ?? 0),
+      roi: current.roi + Number(row.roi_ratio ?? 0),
+      sessions: current.sessions + Number(row.campaign_sessions ?? 0),
+      orders: current.orders + Number(row.campaign_orders ?? 0),
+      revenue: current.revenue + Number(row.revenue_attributed ?? 0),
     });
   }
 
   const creatorsInPipeline = (campaignCreatorsRes.data ?? []).length;
+  const roiCandidates = campaigns
+    .map((campaign) => Number(campaign.overall_roi ?? performanceByCampaign.get(campaign.id)?.roi ?? 0))
+    .filter((value) => value > 0);
   const projectedRoi =
-    performanceRes.data && performanceRes.data.length > 0
-      ? performanceRes.data.reduce((sum, row) => sum + Number(row.roi_ratio ?? 0), 0) /
-        performanceRes.data.length
+    roiCandidates.length > 0
+      ? roiCandidates.reduce((sum, value) => sum + value, 0) / roiCandidates.length
       : null;
 
   return {
@@ -81,7 +90,12 @@ export async function getCampaignsOverview(
       return {
         ...campaign,
         creators: Object.values(split).reduce((sum, value) => sum + value, 0),
-        roi: Math.round((performance?.roi ?? 0) * 100) / 100,
+        roi: Math.round(
+          Number(campaign.overall_roi ?? performance?.roi ?? 0) * 100
+        ) / 100,
+        revenue: Math.round(
+          Number(campaign.total_revenue_attributed ?? performance?.revenue ?? 0)
+        ),
         split: [
           { label: "Shortlisted", value: split.shortlisted ?? 0, color: "#f59e0b" },
           { label: "Contacted", value: split.contacted ?? 0, color: "#f97316" },
@@ -90,5 +104,40 @@ export async function getCampaignsOverview(
         ],
       };
     }),
+  };
+}
+
+export async function getCampaignDetail(
+  supabase: SupabaseClient,
+  brandId: string,
+  campaignId: string
+) {
+  const [campaignRes, creatorsRes] = await Promise.all([
+    supabase
+      .from("campaigns")
+      .select("*")
+      .eq("brand_id", brandId)
+      .eq("id", campaignId)
+      .single(),
+    supabase
+      .from("campaign_creators")
+      .select(
+        "*, creator:creators(id, handle, display_name, avatar_url, contact_email, followers), utm:campaign_utm_links(id, full_url, orders_attributed, revenue_attributed)"
+      )
+      .eq("campaign_id", campaignId)
+      .order("assigned_at", { ascending: false }),
+  ]);
+
+  if (campaignRes.error) {
+    throw campaignRes.error;
+  }
+
+  if (creatorsRes.error) {
+    throw creatorsRes.error;
+  }
+
+  return {
+    campaign: campaignRes.data,
+    creators: creatorsRes.data ?? [],
   };
 }

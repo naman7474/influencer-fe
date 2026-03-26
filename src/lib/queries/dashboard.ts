@@ -20,7 +20,7 @@ export async function getDashboardOverview(
     geoAlertsRes,
     matchesRes,
     shortlistRes,
-    productsRes,
+    outreachRes,
   ] = await Promise.all([
     supabase
       .from("campaigns")
@@ -59,11 +59,13 @@ export async function getDashboardOverview(
       .select("id", { count: "exact", head: true })
       .eq("brand_id", brandId),
     supabase
-      .from("brand_products")
-      .select("id, title, product_type, min_price, max_price, image_url")
+      .from("outreach_messages")
+      .select(
+        "id, status, channel, created_at, campaign:campaigns(id, name), creator:creators(handle, display_name)"
+      )
       .eq("brand_id", brandId)
       .order("created_at", { ascending: false })
-      .limit(4),
+      .limit(5),
   ]);
 
   if (campaignsRes.error) throw campaignsRes.error;
@@ -73,7 +75,7 @@ export async function getDashboardOverview(
   if (geoAlertsRes.error) throw geoAlertsRes.error;
   if (matchesRes.error) throw matchesRes.error;
   if (shortlistRes.error) throw shortlistRes.error;
-  if (productsRes.error) throw productsRes.error;
+  if (outreachRes.error) throw outreachRes.error;
 
   const campaigns = campaignsRes.data ?? [];
   const campaignCreators = campaignCreatorsRes.data ?? [];
@@ -166,6 +168,6 @@ export async function getDashboardOverview(
       creator: creatorMap.get(row.creator_id) ?? null,
     })),
     shortlist_count: shortlistRes.count ?? 0,
-    products: productsRes.data ?? [],
+    recent_outreach: outreachRes.data ?? [],
   };
 }

@@ -47,6 +47,25 @@ export type ShopifySyncStatus =
   | "succeeded"
   | "failed";
 
+export type OutreachChannel = "email" | "whatsapp" | "instagram_dm";
+
+export type OutreachStatus =
+  | "draft"
+  | "queued"
+  | "sent"
+  | "delivered"
+  | "opened"
+  | "replied"
+  | "bounced"
+  | "failed";
+
+export type InboundStatus =
+  | "new"
+  | "analyzing"
+  | "scored"
+  | "accepted"
+  | "rejected";
+
 export interface ApiMeta {
   request_id?: string;
   page?: number;
@@ -76,6 +95,7 @@ export interface BrandContext {
   industry: string | null;
   website: string | null;
   shopify_connected: boolean;
+  instagram_connected: boolean;
   billing_plan: BillingPlan;
   user_role: UserRole;
   feature_flags: {
@@ -83,6 +103,7 @@ export interface BrandContext {
     campaigns_enabled: boolean;
     billing_enabled: boolean;
     brand_fit_enabled: boolean;
+    inbound_enabled: boolean;
   };
 }
 
@@ -96,8 +117,121 @@ export interface BrandContextRecord extends BrandContext {
   shopify_sync_error: string | null;
   shopify_sync_started_at: string | null;
   shopify_sync_completed_at: string | null;
+  instagram_connected_at: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface OutreachTemplate {
+  id: string;
+  brand_id: string;
+  name: string;
+  channel: OutreachChannel;
+  subject: string | null;
+  body: string;
+  followup_enabled: boolean;
+  followup_days: number;
+  followup_subject: string | null;
+  followup_body: string | null;
+  max_followups: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OutreachMessage {
+  id: string;
+  brand_id: string;
+  campaign_id: string | null;
+  creator_id: string;
+  template_id: string | null;
+  channel: OutreachChannel;
+  status: OutreachStatus;
+  subject: string | null;
+  body: string;
+  recipient_email: string | null;
+  from_email: string | null;
+  resend_message_id: string | null;
+  inbound_reply_address: string | null;
+  parent_message_id: string | null;
+  followup_number: number;
+  queued_at: string | null;
+  sent_at: string | null;
+  delivered_at: string | null;
+  opened_at: string | null;
+  replied_at: string | null;
+  bounced_at: string | null;
+  failed_at: string | null;
+  error_message: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  creator?: {
+    id: string;
+    handle: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    contact_email?: string | null;
+  };
+  campaign?: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+export interface OutreachReply {
+  id: string;
+  brand_id: string;
+  outreach_message_id: string;
+  resend_message_id: string | null;
+  from_email: string | null;
+  to_email: string | null;
+  subject: string | null;
+  text_content: string | null;
+  html_content: string | null;
+  raw_payload: Record<string, unknown>;
+  received_at: string;
+  created_at: string;
+}
+
+export interface InboundCreator {
+  id: string;
+  brand_id: string;
+  sender_id: string;
+  sender_handle: string | null;
+  sender_name: string | null;
+  sender_avatar_url: string | null;
+  message_preview: string | null;
+  last_message_at: string | null;
+  status: InboundStatus;
+  linked_creator_id: string | null;
+  cpi_score: number | null;
+  match_score: number | null;
+  created_at: string;
+  updated_at: string;
+  creator?: {
+    id: string;
+    handle: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    followers?: number | null;
+  } | null;
+}
+
+export interface CampaignUtmLink {
+  id: string;
+  brand_id: string;
+  campaign_id: string;
+  creator_id: string;
+  campaign_creator_id: string | null;
+  utm_source: string;
+  utm_medium: string;
+  utm_campaign: string;
+  full_url: string;
+  clicks: number;
+  orders_attributed: number;
+  revenue_attributed: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface BrandProduct {

@@ -48,6 +48,14 @@ async function fetchCreatorRelatedData(
           .eq("brand_id", brandId)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    brandId
+      ? supabase
+          .from("brand_shortlist_items")
+          .select("id")
+          .eq("creator_id", creatorId)
+          .eq("brand_id", brandId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ] as const;
 
   const [
@@ -57,6 +65,7 @@ async function fetchCreatorRelatedData(
     audienceRes,
     postsRes,
     brandMatchRes,
+    shortlistRes,
   ] = await Promise.all(requests);
 
   return {
@@ -66,6 +75,7 @@ async function fetchCreatorRelatedData(
     audienceIntel: audienceRes.data,
     posts: postsRes.data ?? [],
     brandMatch: brandMatchRes.data,
+    shortlistItem: shortlistRes.data,
   };
 }
 

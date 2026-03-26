@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, MapPinned, ShoppingBag, Sparkles, Users } from "lucide-react";
+import { ArrowRight, MapPinned, Sparkles, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireBrandContext } from "@/lib/queries/brand";
 import { getDashboardOverview } from "@/lib/queries/dashboard";
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card";
 import { StatCard } from "@/components/shared/stat-card";
 import { SegmentedBar } from "@/components/shared/visuals";
-import { formatNumber, humanize } from "@/lib/constants";
+import { humanize } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 const primaryActionClassName = cn(
@@ -101,19 +101,16 @@ export default async function DashboardPage() {
         <StatCard
           label="Active Campaigns"
           value={String(overview.summary.active_campaigns)}
-          subtext="Currently running campaigns."
           icon={<Sparkles className="h-5 w-5" />}
         />
         <StatCard
           label="Creators In Pipeline"
           value={String(overview.summary.creators_in_pipeline)}
-          subtext="Across all active campaigns."
           icon={<Users className="h-5 w-5" />}
         />
         <StatCard
           label="Shortlist"
           value={String(overview.shortlist_count)}
-          subtext="Saved from discovery and recommendations."
           icon={<Users className="h-5 w-5" />}
         />
         <StatCard
@@ -123,7 +120,6 @@ export default async function DashboardPage() {
               ? `${overview.summary.avg_campaign_roi.toFixed(1)}x`
               : "N/A"
           }
-          subtext="Average return across campaigns."
           icon={<MapPinned className="h-5 w-5" />}
         />
       </div>
@@ -252,35 +248,47 @@ export default async function DashboardPage() {
 
         <Card className="border bg-card">
           <CardHeader>
-            <CardTitle>Shopify products</CardTitle>
+            <CardTitle>Recent outreach</CardTitle>
             <CardDescription>
-              Products from your Shopify store used for creator matching.
+              Latest outreach activity across campaigns.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {overview.products.length > 0 ? (
-              overview.products.map((product) => (
-                <div key={product.id} className="rounded-lg bg-muted/50 p-3">
+            {overview.recent_outreach.length > 0 ? (
+              overview.recent_outreach.map((message) => (
+                <Link
+                  key={message.id}
+                  href={
+                    message.campaign?.id
+                      ? `/campaigns/${message.campaign.id}`
+                      : "/campaigns"
+                  }
+                  className="block rounded-lg bg-muted/50 p-3 transition-colors hover:bg-muted"
+                >
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium text-foreground">{product.title}</p>
+                      <p className="text-sm font-medium text-foreground">
+                        {message.creator?.display_name ??
+                          message.creator?.handle ??
+                          "Unknown creator"}
+                      </p>
                       <p className="text-xs text-muted-foreground">
-                        {product.product_type || "Uncategorized"} · ₹
-                        {formatNumber(Number(product.min_price ?? 0))}
-                        {product.max_price && product.max_price !== product.min_price
-                          ? ` - ₹${formatNumber(Number(product.max_price))}`
-                          : ""}
+                        {message.campaign?.name ?? "No campaign"} ·{" "}
+                        {message.channel.replace("_", " ")}
                       </p>
                     </div>
-                    <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+                    <div className="text-right">
+                      <Badge variant="outline">{message.status}</Badge>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {new Date(message.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                </Link>
               ))
             ) : (
               <div className="rounded-lg border border-dashed bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-                {brand.shopify_connected
-                  ? "No Shopify products have been synced yet."
-                  : "Connect Shopify to sync your product catalogue."}
+                No outreach queued yet. Send the first message from a creator profile or campaign.
               </div>
             )}
           </CardContent>

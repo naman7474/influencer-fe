@@ -8,5 +8,11 @@ export default async function SettingsPage() {
   const brand = await requireBrandContext(supabase);
   const settings = await getSettingsOverview(supabase, brand.brand_id);
 
-  return <SettingsClient brand={settings.brand} products={settings.products} hasAdminToken={settings.has_admin_token} />;
+  return (
+    <SettingsClient
+      brand={settings.brand}
+      templates={settings.templates}
+      hasAdminToken={settings.has_admin_token}
+    />
+  );
 }

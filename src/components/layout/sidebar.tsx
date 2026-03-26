@@ -35,8 +35,21 @@ export function DashboardBrandMark() {
   );
 }
 
-export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
+export function SidebarNav({
+  onNavigate,
+  showInbound = false,
+}: {
+  onNavigate?: () => void;
+  showInbound?: boolean;
+}) {
   const pathname = usePathname();
+  const navItems = showInbound
+    ? [
+        ...DASHBOARD_NAV_ITEMS.slice(0, 4),
+        { href: "/inbound", label: "Inbound", icon: Search },
+        DASHBOARD_NAV_ITEMS[4],
+      ]
+    : DASHBOARD_NAV_ITEMS;
 
   return (
     <nav className="flex flex-1 flex-col">
@@ -45,7 +58,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
           Workspace
         </p>
         <ul className="space-y-0.5">
-          {DASHBOARD_NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const isActive = pathname.startsWith(item.href);
             const Icon = item.icon;
 
@@ -69,29 +82,18 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
           })}
         </ul>
       </div>
-
-      <div className="mt-auto px-3 pb-3">
-        <div className="rounded-lg border bg-muted/50 p-3">
-          <p className="text-xs font-medium text-muted-foreground">
-            Data Health
-          </p>
-          <p className="mt-1 text-sm font-medium text-foreground">
-            All systems operational
-          </p>
-        </div>
-      </div>
     </nav>
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ showInbound = false }: { showInbound?: boolean }) {
   return (
     <aside className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-60 lg:flex-col">
       <div className="flex grow flex-col overflow-y-auto border-r border-border bg-background px-3 py-4">
         <div className="pb-5">
           <DashboardBrandMark />
         </div>
-        <SidebarNav />
+        <SidebarNav showInbound={showInbound} />
       </div>
     </aside>
   );
