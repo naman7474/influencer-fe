@@ -1,5 +1,20 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+type DashboardRecentOutreachItem = {
+  id: string;
+  status: string;
+  channel: string;
+  created_at: string;
+  campaign: {
+    id: string;
+    name: string;
+  } | null;
+  creator: {
+    handle: string | null;
+    display_name: string | null;
+  } | null;
+};
+
 export async function getDashboardOverview(
   supabase: SupabaseClient,
   brandId: string
@@ -98,6 +113,20 @@ export async function getDashboardOverview(
   const creatorMap = new Map(
     (creatorsRes.data ?? []).map((creator) => [creator.creator_id, creator])
   );
+  const recentOutreach: DashboardRecentOutreachItem[] = (outreachRes.data ?? []).map(
+    (row) => ({
+      id: row.id,
+      status: row.status,
+      channel: row.channel,
+      created_at: row.created_at,
+      campaign: Array.isArray(row.campaign)
+        ? (row.campaign[0] ?? null)
+        : (row.campaign ?? null),
+      creator: Array.isArray(row.creator)
+        ? (row.creator[0] ?? null)
+        : (row.creator ?? null),
+    })
+  );
 
   const campaignStatusMap = new Map<
     string,
@@ -168,6 +197,6 @@ export async function getDashboardOverview(
       creator: creatorMap.get(row.creator_id) ?? null,
     })),
     shortlist_count: shortlistRes.count ?? 0,
-    recent_outreach: outreachRes.data ?? [],
+    recent_outreach: recentOutreach,
   };
 }
