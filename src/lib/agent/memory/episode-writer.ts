@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { generateEmbedding } from "./embeddings";
 
 type EpisodeType =
   | "outreach_drafted"
@@ -21,6 +22,7 @@ interface WriteEpisodeParams {
   creatorId?: string;
   campaignId?: string;
   outcome?: "positive" | "negative" | "neutral";
+  importance?: number;
   conversationMsgId?: string;
   supabase: SupabaseClient;
 }
@@ -34,9 +36,13 @@ export async function writeEpisode(params: WriteEpisodeParams) {
     creatorId,
     campaignId,
     outcome,
+    importance,
     conversationMsgId,
     supabase,
   } = params;
+
+  // Generate embedding for vector search (non-blocking — null on failure)
+  const embedding = await generateEmbedding(summary);
 
   await supabase.from("agent_episodes").insert({
     brand_id: brandId,
@@ -46,6 +52,8 @@ export async function writeEpisode(params: WriteEpisodeParams) {
     creator_id: creatorId || null,
     campaign_id: campaignId || null,
     outcome: outcome || "neutral",
+    importance: importance ?? 0.5,
     conversation_msg_id: conversationMsgId || null,
+    embedding: embedding,
   });
 }

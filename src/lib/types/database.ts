@@ -2454,6 +2454,13 @@ export type ComplianceScanInsert = Database["public"]["Tables"]["compliance_scan
 export type CampaignReport = Database["public"]["Tables"]["campaign_reports"]["Row"];
 export type CampaignReportInsert = Database["public"]["Tables"]["campaign_reports"]["Insert"];
 
+/* ── Phase 6: Agent Intelligence Upgrade types ─────────────────── */
+
+// Note: agent_traces and agent_workflows tables are created via migrations
+// and used directly via Supabase client (no generated types needed for
+// runtime use). Type safety is provided by the TraceLogger, WorkflowEngine,
+// and BackgroundRunner classes.
+
 /* ------------------------------------------------------------------ */
 /*  Enum type aliases                                                  */
 /* ------------------------------------------------------------------ */

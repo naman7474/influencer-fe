@@ -163,7 +163,7 @@ describe("reengagement-recommender", () => {
         if (table === "mv_creator_leaderboard") {
           return mockQueryBuilder([
             {
-              id: "c1",
+              creator_id: "c1",
               handle: "@past_star",
               display_name: "Past Star",
               followers: 60000,
@@ -244,8 +244,8 @@ describe("ambassador-identifier", () => {
         }
         if (table === "mv_creator_leaderboard") {
           return mockQueryBuilder([
-            { id: "c1", handle: "@platinum", display_name: "Platinum", followers: 100000, tier: "macro", cpi: 90, primary_niche: "beauty", city: "Mumbai" },
-            { id: "c2", handle: "@gold", display_name: "Gold", followers: 50000, tier: "mid", cpi: 75, primary_niche: "fashion", city: "Delhi" },
+            { creator_id: "c1", handle: "@platinum", display_name: "Platinum", followers: 100000, tier: "macro", cpi: 90, primary_niche: "beauty", city: "Mumbai" },
+            { creator_id: "c2", handle: "@gold", display_name: "Gold", followers: 50000, tier: "mid", cpi: 75, primary_niche: "fashion", city: "Delhi" },
           ]);
         }
         if (table === "creator_brand_matches") {
@@ -335,7 +335,7 @@ describe("churn-predictor", () => {
         }
         if (table === "mv_creator_leaderboard") {
           return mockQueryBuilder([
-            { id: "c1", handle: "@fading", display_name: "Fading", tier: "micro", followers: 10000, cpi: 40 },
+            { creator_id: "c1", handle: "@fading", display_name: "Fading", tier: "micro", followers: 10000, cpi: 40 },
           ]);
         }
         return mockQueryBuilder([]);

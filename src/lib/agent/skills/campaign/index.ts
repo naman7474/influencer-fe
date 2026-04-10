@@ -10,6 +10,7 @@ import { discountCodeGeneratorTool } from "./discount-code-generator";
 import { utmGeneratorTool } from "./utm-generator";
 import { briefGeneratorTool } from "./brief-generator";
 import { giftingOrderCreatorTool } from "./gifting-order-creator";
+import { campaignStatusManagerTool } from "./campaign-status-manager";
 
 const skills: SkillDefinition[] = [
   {
@@ -54,6 +55,13 @@ const skills: SkillDefinition[] = [
     riskLevel: "high",
     factory: giftingOrderCreatorTool,
   },
+  {
+    name: "campaign_status_manager",
+    category: "campaign",
+    permission: "can_manage_campaigns",
+    riskLevel: "medium",
+    factory: campaignStatusManagerTool,
+  },
 ];
 
 registerSkills(skills);
@@ -64,3 +72,4 @@ export { discountCodeGeneratorTool } from "./discount-code-generator";
 export { utmGeneratorTool } from "./utm-generator";
 export { briefGeneratorTool } from "./brief-generator";
 export { giftingOrderCreatorTool } from "./gifting-order-creator";
+export { campaignStatusManagerTool } from "./campaign-status-manager";

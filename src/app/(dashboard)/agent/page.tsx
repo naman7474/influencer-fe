@@ -10,6 +10,7 @@ import { AgentMarkdown } from "@/components/agent/markdown";
 import {
   loadChatHistory,
   loadSessions,
+  createSession,
   deleteSession,
   type ChatSession,
 } from "@/lib/agent/load-chat-history";
@@ -150,17 +151,24 @@ export default function AgentPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
 
+  // Ref so the transport always reads the latest session ID at request time
+  const sessionIdRef = useRef<string | null>(null);
+  sessionIdRef.current = activeSessionId;
+
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
         api: "/api/agent/chat",
-        body: {
+        // body is Resolvable — a function is called at request time,
+        // so it always reads the latest sessionId from the ref
+        body: () => ({
           pageContext: pageContext.path,
           pageData: pageContext.data,
-          sessionId: activeSessionId,
-        },
+          sessionId: sessionIdRef.current,
+        }),
       }),
-    [pageContext.path, pageContext.data, activeSessionId]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pageContext.path, pageContext.data]
   );
 
   const { messages, sendMessage, status, setMessages } = useChat({ transport });
@@ -217,6 +225,7 @@ export default function AgentPage() {
   }, []);
 
   const handleNewChat = useCallback(() => {
+    sessionIdRef.current = null;
     setActiveSessionId(null);
     setMessages([]);
     setHistoryLoaded(false);
@@ -245,28 +254,26 @@ export default function AgentPage() {
   );
 
   const handleSend = useCallback(
-    (text?: string) => {
+    async (text?: string) => {
       const msg = text ?? input.trim();
       if (!msg || isLoading) return;
+
+      // Create session before first message so all messages share the same session
+      if (!sessionIdRef.current) {
+        const title = msg.length > 60 ? msg.slice(0, 57) + "..." : msg;
+        const session = await createSession(title);
+        if (session) {
+          sessionIdRef.current = session.id;
+          setActiveSessionId(session.id);
+          setSessions((prev) => [session, ...prev]);
+        }
+      }
+
       sendMessage({ text: msg });
       setInput("");
       if (inputRef.current) inputRef.current.style.height = "auto";
-
-      // If no session yet, one will be auto-created by the API.
-      // After sending, refresh session list after a brief delay
-      // so the new session appears in the sidebar.
-      if (!activeSessionId) {
-        setTimeout(async () => {
-          const updated = await loadSessions();
-          setSessions(updated);
-          // Set the newest session as active
-          if (updated.length > 0 && !activeSessionId) {
-            setActiveSessionId(updated[0].id);
-          }
-        }, 2000);
-      }
     },
-    [input, isLoading, sendMessage, activeSessionId]
+    [input, isLoading, sendMessage]
   );
 
   const onKeyDown = (e: React.KeyboardEvent) => {

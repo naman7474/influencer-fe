@@ -5,6 +5,7 @@
 /* ------------------------------------------------------------------ */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { generateEmbedding } from "./embeddings";
 
 export type KnowledgeType =
   | "rate_benchmark"
@@ -107,7 +108,8 @@ export async function writeKnowledge(
     return { action: "reinforced", id: existing.id as string };
   }
 
-  // 3. Insert new knowledge
+  // 3. Insert new knowledge (with embedding for vector search)
+  const embedding = await generateEmbedding(fact);
   const { data, error } = await supabase
     .from("agent_knowledge")
     .insert({
@@ -119,6 +121,7 @@ export async function writeKnowledge(
       evidence_count: 1,
       source_episode_ids: sourceEpisodeId ? [sourceEpisodeId] : [],
       source_campaign_ids: sourceCampaignId ? [sourceCampaignId] : [],
+      embedding: embedding,
     } as never)
     .select("id")
     .single();

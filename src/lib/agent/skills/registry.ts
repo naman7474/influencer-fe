@@ -7,8 +7,24 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Tool } from "ai";
 import { dynamicTool, jsonSchema } from "ai";
 import type { AgentConfig } from "@/lib/types/database";
-import type { SkillDefinition, SkillPermission } from "./types";
+import type { SkillDefinition, SkillPermission, RiskLevel } from "./types";
 import { executeCustomSkill } from "./custom-executor";
+import { wrapToolWithRetry } from "../tool-retry";
+import { getActionAutonomy } from "../autonomy";
+
+/**
+ * Maps skill names to action autonomy keys for enforcement.
+ *
+ * IMPORTANT: Only include skills that do NOT already have built-in
+ * approval wrappers. Skills like campaign_builder, gifting_order_creator,
+ * and discount_code_generator already route through createApprovalRequest()
+ * internally, so they handle their own safety and should NOT be blocked here.
+ */
+const SKILL_TO_ACTION: Record<string, string> = {
+  propose_outreach: "first_outreach",
+  counter_offer_generator: "negotiate_rates",
+  deal_memo_generator: "negotiate_rates",
+};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyTool = Tool<any, any>;
@@ -83,7 +99,20 @@ export async function buildToolset(
       isPermissionEnabled(agentConfig, skill.permission) &&
       !disabledSkills.has(skill.name)
     ) {
-      tools[skill.name] = skill.factory(brandId, supabase);
+      // Programmatic autonomy enforcement: block ALWAYS-MANUAL actions at tool level
+      const actionKey = SKILL_TO_ACTION[skill.name];
+      if (actionKey && skill.riskLevel !== "low") {
+        const autonomyLevel = getActionAutonomy(
+          agentConfig,
+          actionKey as Parameters<typeof getActionAutonomy>[1]
+        );
+        if (autonomyLevel === "ALWAYS-MANUAL") {
+          // Skip registering this tool entirely — LLM cannot call it
+          continue;
+        }
+      }
+
+      tools[skill.name] = wrapToolWithRetry(skill.factory(brandId, supabase));
     }
   }
 

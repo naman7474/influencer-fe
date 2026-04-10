@@ -228,7 +228,7 @@ describe("roi-calculator", () => {
       from: vi.fn((table: string) => {
         if (table === "campaigns") {
           return mockQueryBuilder([
-            { id: "camp-1", name: "Test", budget: 100000, status: "active" },
+            { id: "camp-1", name: "Test", total_budget: 100000, status: "active" },
           ]);
         }
         return mockQueryBuilder([]); // empty performance
@@ -249,7 +249,7 @@ describe("roi-calculator", () => {
       from: vi.fn((table: string) => {
         if (table === "campaigns") {
           return mockQueryBuilder([
-            { id: "camp-1", name: "Test", budget: 100000, status: "active" },
+            { id: "camp-1", name: "Test", total_budget: 100000, status: "active" },
           ]);
         }
         if (table === "campaign_performance_summary") {
@@ -276,8 +276,8 @@ describe("roi-calculator", () => {
         }
         if (table === "mv_creator_leaderboard") {
           return mockQueryBuilder([
-            { id: "c1", handle: "@top", display_name: "Top", tier: "mid", followers: 50000 },
-            { id: "c2", handle: "@low", display_name: "Low", tier: "micro", followers: 10000 },
+            { creator_id: "c1", handle: "@top", display_name: "Top", tier: "mid", followers: 50000 },
+            { creator_id: "c2", handle: "@low", display_name: "Low", tier: "micro", followers: 10000 },
           ]);
         }
         return mockQueryBuilder([]);
@@ -425,7 +425,7 @@ describe("campaign-reporter", () => {
               id: "camp-1",
               name: "Summer Campaign",
               goal: "Drive sales",
-              budget: 100000,
+              total_budget: 100000,
               start_date: "2025-06-01",
               end_date: "2025-07-01",
               status: "completed",
@@ -451,8 +451,8 @@ describe("campaign-reporter", () => {
         }
         if (table === "mv_creator_leaderboard") {
           return mockQueryBuilder([
-            { id: "c1", handle: "@top", display_name: "Top", tier: "mid", followers: 50000, avg_engagement_rate: 4.0 },
-            { id: "c2", handle: "@low", display_name: "Low", tier: "micro", followers: 10000, avg_engagement_rate: 2.0 },
+            { creator_id: "c1", handle: "@top", display_name: "Top", tier: "mid", followers: 50000, avg_engagement_rate: 4.0 },
+            { creator_id: "c2", handle: "@low", display_name: "Low", tier: "micro", followers: 10000, avg_engagement_rate: 2.0 },
           ]);
         }
         if (table === "campaign_creators") {

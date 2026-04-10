@@ -7,7 +7,17 @@ import { buildSystemPrompt } from "./system-prompt";
 import { DEFAULT_SOUL_MD } from "./soul-md";
 import { buildToolset } from "./skills/registry";
 import { writeEpisode } from "./memory/episode-writer";
-import { retrieveKnowledge } from "./memory/knowledge-reader";
+import { searchEpisodesByVector, searchKnowledgeByVector } from "./memory/vector-search";
+import { generateEpisodeSummary, classifyEpisodeType, computeImportance } from "./memory/episode-summarizer";
+import { extractFromRateBenchmark } from "./memory/knowledge-writer";
+import { rankMemories } from "./memory/memory-scorer";
+import { TraceLogger } from "./trace-logger";
+import { classifyComplexity, getStepLimit } from "./step-limiter";
+import { selectModel, DEFAULT_MODEL_NAME } from "./model-router";
+import { validateOutput } from "./guardrails";
+import { withRetry } from "./tool-retry";
+import { workflowExecutorTool } from "./skills/_shared/workflow-tool";
+import { selectRelevantTools } from "./tool-selector";
 
 // Import category index files to trigger skill registration
 import "./skills/discovery";
@@ -24,21 +34,34 @@ interface AgentRuntimeParams {
   pageData?: Record<string, unknown>;
   agentConfig: AgentConfig;
   supabase: SupabaseClient;
+  sessionId?: string | null;
 }
 
 export async function runAgent(params: AgentRuntimeParams) {
-  const { brandId, messages, pageContext, pageData, agentConfig, supabase } =
+  const { brandId, messages, pageContext, pageData, agentConfig, supabase, sessionId } =
     params;
 
-  // 1. Retrieve relevant episodic memories
-  const memories = await retrieveMemories(brandId, messages, supabase);
+  // Phase 6B: Initialize trace logger for observability
+  const tracer = new TraceLogger(brandId, sessionId || null, supabase);
 
-  // 1b. Retrieve relevant semantic knowledge (Phase 5)
+  // 1. Retrieve relevant episodic memories (Phase 6: vector search → composite scoring)
   const lastUserContent = getLastUserContent(messages);
-  const knowledge = await retrieveKnowledge(
+  const memStart = Date.now();
+  const rawMemories = await searchEpisodesByVector(brandId, lastUserContent, supabase, 10);
+  const memories = rankMemories(rawMemories, 5);
+  await tracer.logMemoryRetrieval(
+    rawMemories.some((m) => m.similarity != null) ? "vector" : "keyword",
+    memories.length,
+    Date.now() - memStart
+  );
+
+  // 1b. Retrieve relevant semantic knowledge (Phase 6: vector search with keyword fallback)
+  const knowledge = await searchKnowledgeByVector(
     brandId,
     lastUserContent,
-    supabase
+    supabase,
+    5,
+    0.4
   );
 
   // 2. Build the system prompt
@@ -56,24 +79,108 @@ export async function runAgent(params: AgentRuntimeParams) {
   // 3. Build tool set from skill registry (permission-filtered + custom skills)
   const tools = await buildToolset(brandId, supabase, agentConfig);
 
-  // 4. Stream response with tool calling
+  // 3b. Add workflow executor for multi-step tasks
+  tools.workflow_executor = workflowExecutorTool(brandId, supabase);
+
+  // 3c. Dynamic tool selection — only pass relevant tools to reduce token usage
+  const activeTools = selectRelevantTools(tools, lastUserContent);
+
+  // 4. Stream response with adaptive step limit + model routing (Phase 6)
+  const complexity = classifyComplexity(lastUserContent);
+  const maxSteps = getStepLimit(complexity);
+  // Only use model router's complexity-based selection when brand hasn't customized their model
+  const modelOverride =
+    agentConfig.model_name && agentConfig.model_name !== DEFAULT_MODEL_NAME
+      ? agentConfig.model_name
+      : null;
+  const modelSelection = selectModel(complexity, modelOverride);
+
   const result = streamText({
-    model: anthropic(agentConfig.model_name || "claude-sonnet-4-20250514"),
+    model: anthropic(modelSelection.modelId),
     system: systemPrompt,
     messages,
-    tools,
-    stopWhen: stepCountIs(5),
-    temperature: Number(agentConfig.temperature) || 0.7,
-    maxOutputTokens: agentConfig.max_tokens || 4096,
-    onFinish: async ({ text, usage }) => {
+    tools: activeTools,
+    stopWhen: stepCountIs(maxSteps),
+    temperature: Number(agentConfig.temperature) || modelSelection.temperature,
+    maxOutputTokens: agentConfig.max_tokens || modelSelection.maxTokens,
+    onFinish: async ({ text, usage, steps }) => {
+      // Phase 6B: Trace LLM call
+      const totalTokens = (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0);
+      await tracer.logLLMCall(
+        totalTokens,
+        0,
+        usage?.outputTokens ?? 0
+      );
+
+      // Phase 6B: Trace tool calls with results/errors from steps
+      if (steps) {
+        for (const step of steps) {
+          if (step.toolCalls) {
+            for (const tc of step.toolCalls) {
+              const toolResult = step.toolResults?.find(
+                (tr: { toolCallId: string }) => tr.toolCallId === tc.toolCallId
+              );
+              if (toolResult) {
+                const result = toolResult.output as Record<string, unknown>;
+                if (result?.error) {
+                  await tracer.logToolError(
+                    tc.toolName,
+                    String(result.error),
+                    0
+                  );
+                } else {
+                  await tracer.logToolCall(
+                    tc.toolName,
+                    tc.input as Record<string, unknown>,
+                    0
+                  );
+                  await tracer.logToolResult(
+                    tc.toolName,
+                    { resultKeys: Object.keys(result || {}) },
+                    0
+                  );
+                }
+
+                // Phase 7: Extract knowledge from rate benchmarker results
+                if (tc.toolName === "rate_benchmarker" && result && !result.error) {
+                  try {
+                    await extractFromRateBenchmark(brandId, result, supabase);
+                  } catch {
+                    // Knowledge extraction failure should not break the agent
+                  }
+                }
+              } else {
+                await tracer.logToolCall(
+                  tc.toolName,
+                  tc.input as Record<string, unknown>,
+                  0
+                );
+              }
+            }
+          }
+        }
+      }
+
+      // Phase 7: Output guardrails — check for false promises and currency issues
+      if (text) {
+        const guardrailResult = validateOutput(text, {});
+        if (!guardrailResult.passed) {
+          await tracer.log("tool_error", {
+            toolName: "guardrail_check",
+            error: guardrailResult.issues.join("; "),
+          });
+        }
+      }
+
       // 5. Persist assistant message
       await supabase.from("agent_conversations").insert({
         brand_id: brandId,
+        session_id: sessionId || null,
         role: "assistant",
         content: text || "",
         page_context: pageContext,
         token_count: usage?.totalTokens ?? null,
-        model_used: agentConfig.model_name,
+        model_used: modelSelection.modelId,
       } as never);
 
       // 6. Write episodic memory for significant interactions
@@ -92,52 +199,6 @@ export async function runAgent(params: AgentRuntimeParams) {
   return result;
 }
 
-async function retrieveMemories(
-  brandId: string,
-  messages: ModelMessage[],
-  supabase: SupabaseClient
-): Promise<Array<{ summary: string; episode_type: string; created_at: string }>> {
-  // Get the latest user message for context
-  const lastUserMsg = [...messages]
-    .reverse()
-    .find((m) => m.role === "user");
-  if (!lastUserMsg) return [];
-
-  const content =
-    typeof lastUserMsg.content === "string"
-      ? lastUserMsg.content
-      : "";
-
-  if (!content) return [];
-
-  // Use keyword-based search (always available, no embedding needed)
-  const keywords = content
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length > 3)
-    .slice(0, 3)
-    .join(" ");
-
-  if (!keywords) {
-    // Fall back to recent episodes
-    const { data } = await supabase
-      .from("agent_episodes")
-      .select("summary, episode_type, created_at")
-      .eq("brand_id", brandId)
-      .order("created_at", { ascending: false })
-      .limit(3);
-    return (data || []) as Array<{ summary: string; episode_type: string; created_at: string }>;
-  }
-
-  const { data } = await supabase.rpc("fn_search_agent_episodes_keyword", {
-    p_brand_id: brandId,
-    p_query: keywords,
-    p_limit: 5,
-  });
-
-  return (data || []) as Array<{ summary: string; episode_type: string; created_at: string }>;
-}
-
 async function maybeWriteEpisode(
   brandId: string,
   messages: ModelMessage[],
@@ -152,26 +213,18 @@ async function maybeWriteEpisode(
   const userContent =
     typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
 
-  // Determine episode type from user message keywords
-  const lower = userContent.toLowerCase();
-  let episodeType = "general_interaction";
+  // Phase 6: Rich classification and importance scoring
+  const episodeType = classifyEpisodeType(userContent);
+  const importance = computeImportance(episodeType);
 
-  if (/find|search|discover|recommend|creator/i.test(lower)) {
-    episodeType = "creator_search";
-  } else if (/draft|outreach|email|write|compose/i.test(lower)) {
-    episodeType = "outreach_drafted";
-  } else if (/rate|price|cost|budget|worth|benchmark/i.test(lower)) {
-    episodeType = "rate_benchmark";
-  } else if (/campaign|performance|roi|analytics/i.test(lower)) {
-    episodeType = "campaign_advice";
-  }
-
-  const summary = `User asked: "${userContent.substring(0, 100)}". Agent responded with ${assistantText.length > 200 ? "detailed" : "brief"} guidance.`;
+  // Phase 6: LLM-generated summary (falls back to template on failure)
+  const summary = await generateEpisodeSummary(userContent, assistantText);
 
   await writeEpisode({
     brandId,
     type: episodeType,
     summary,
+    importance,
     supabase,
   });
 }

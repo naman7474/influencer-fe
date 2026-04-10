@@ -92,7 +92,7 @@ describe("campaign-builder", () => {
 
   it("reports missing creators", async () => {
     const supabase = createTableMockSupabase({
-      mv_creator_leaderboard: [{ id: "c1", handle: "@c1" }],
+      mv_creator_leaderboard: [{ creator_id: "c1", handle: "@c1" }],
     });
     const t = campaignBuilderTool(brandId, supabase);
     const result = (await t.execute(

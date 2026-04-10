@@ -115,9 +115,9 @@ describe("Skill Registry", () => {
   });
 
   describe("buildToolset", () => {
-    it("returns all tools when all permissions enabled", () => {
+    it("returns all tools when all permissions enabled", async () => {
       const config = makeAgentConfig();
-      const tools = buildToolset("brand-1", mockSupabase, config);
+      const tools = await buildToolset("brand-1", mockSupabase, config);
 
       expect(Object.keys(tools)).toContain("creator_search");
       expect(Object.keys(tools)).toContain("get_creator_details");
@@ -127,9 +127,9 @@ describe("Skill Registry", () => {
       expect(Object.keys(tools)).toContain("propose_outreach");
     });
 
-    it("excludes all discovery skills when can_search_creators is false", () => {
+    it("excludes all discovery skills when can_search_creators is false", async () => {
       const config = makeAgentConfig({ can_search_creators: false });
-      const tools = buildToolset("brand-1", mockSupabase, config);
+      const tools = await buildToolset("brand-1", mockSupabase, config);
 
       expect(Object.keys(tools)).not.toContain("creator_search");
       expect(Object.keys(tools)).not.toContain("get_creator_details");
@@ -143,32 +143,32 @@ describe("Skill Registry", () => {
       expect(Object.keys(tools)).toContain("get_campaign_info");
     });
 
-    it("excludes outreach skills when can_draft_outreach is false", () => {
+    it("excludes outreach skills when can_draft_outreach is false", async () => {
       const config = makeAgentConfig({ can_draft_outreach: false });
-      const tools = buildToolset("brand-1", mockSupabase, config);
+      const tools = await buildToolset("brand-1", mockSupabase, config);
 
       expect(Object.keys(tools)).not.toContain("outreach_drafter");
       expect(Object.keys(tools)).not.toContain("propose_outreach");
       expect(Object.keys(tools)).toContain("creator_search");
     });
 
-    it("excludes negotiation skills when can_negotiate is false", () => {
+    it("excludes negotiation skills when can_negotiate is false", async () => {
       const config = makeAgentConfig({ can_negotiate: false });
-      const tools = buildToolset("brand-1", mockSupabase, config);
+      const tools = await buildToolset("brand-1", mockSupabase, config);
 
       expect(Object.keys(tools)).not.toContain("rate_benchmarker");
       expect(Object.keys(tools)).toContain("creator_search");
     });
 
-    it("excludes campaign skills when can_manage_campaigns is false", () => {
+    it("excludes campaign skills when can_manage_campaigns is false", async () => {
       const config = makeAgentConfig({ can_manage_campaigns: false });
-      const tools = buildToolset("brand-1", mockSupabase, config);
+      const tools = await buildToolset("brand-1", mockSupabase, config);
 
       expect(Object.keys(tools)).not.toContain("get_campaign_info");
       expect(Object.keys(tools)).toContain("creator_search");
     });
 
-    it("returns empty toolset when all permissions disabled", () => {
+    it("returns empty toolset when all permissions disabled", async () => {
       const config = makeAgentConfig({
         can_search_creators: false,
         can_draft_outreach: false,
@@ -181,23 +181,23 @@ describe("Skill Registry", () => {
         can_scan_content: false,
         can_generate_reports: false,
       } as Partial<AgentConfig>);
-      const tools = buildToolset("brand-1", mockSupabase, config);
+      const tools = await buildToolset("brand-1", mockSupabase, config);
 
       expect(Object.keys(tools)).toHaveLength(0);
     });
 
-    it("defaults Phase 5 permissions to true when missing from config", () => {
+    it("defaults Phase 5 permissions to true when missing from config", async () => {
       // Simulate a pre-Phase-5 config without the new permission fields
       const config = makeAgentConfig();
       // Phase 5 skills aren't registered yet, but the permission check should default to true
       // We test the fallback by verifying no errors are thrown
-      const tools = buildToolset("brand-1", mockSupabase, config);
+      const tools = await buildToolset("brand-1", mockSupabase, config);
       expect(tools).toBeDefined();
     });
 
-    it("returns tool instances that are objects with expected shape", () => {
+    it("returns tool instances that are objects with expected shape", async () => {
       const config = makeAgentConfig();
-      const tools = buildToolset("brand-1", mockSupabase, config);
+      const tools = await buildToolset("brand-1", mockSupabase, config);
 
       // Each tool should be a valid Vercel AI SDK tool (object with type/parameters)
       for (const [name, toolInstance] of Object.entries(tools)) {

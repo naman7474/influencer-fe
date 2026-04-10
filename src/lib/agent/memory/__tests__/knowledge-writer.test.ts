@@ -1,4 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// Mock embeddings before importing knowledge-writer (which now uses it)
+vi.mock("../embeddings", () => ({
+  generateEmbedding: vi.fn().mockResolvedValue(null),
+}));
+
 import {
   reinforceConfidence,
   contradictConfidence,

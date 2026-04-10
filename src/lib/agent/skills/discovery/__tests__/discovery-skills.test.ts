@@ -113,7 +113,7 @@ describe("lookalike-finder", () => {
           // Reference creator (single)
           return mockQueryBuilder([
             {
-              id: "ref",
+              creator_id: "ref",
               handle: "@ref",
               followers: 50000,
               tier: "mid",
@@ -129,7 +129,7 @@ describe("lookalike-finder", () => {
           // Candidates
           return mockQueryBuilder([
             {
-              id: "c1",
+              creator_id: "c1",
               handle: "@similar",
               display_name: "Similar",
               followers: 48000,
@@ -142,7 +142,7 @@ describe("lookalike-finder", () => {
               is_verified: false,
             },
             {
-              id: "c2",
+              creator_id: "c2",
               handle: "@different",
               display_name: "Different",
               followers: 500000,
@@ -249,7 +249,7 @@ describe("competitor-mapper", () => {
       ],
       mv_creator_leaderboard: [
         {
-          id: "c1",
+          creator_id: "c1",
           handle: "@creator1",
           display_name: "Creator1",
           followers: 50000,
@@ -260,7 +260,7 @@ describe("competitor-mapper", () => {
           city: "Mumbai",
         },
         {
-          id: "c2",
+          creator_id: "c2",
           handle: "@creator2",
           display_name: "Creator2",
           followers: 80000,
@@ -316,7 +316,7 @@ describe("competitor-mapper", () => {
       ],
       mv_creator_leaderboard: [
         {
-          id: "c1",
+          creator_id: "c1",
           handle: "@c1",
           display_name: "C1",
           followers: 10000,
@@ -480,7 +480,7 @@ describe("geo-opportunity-finder", () => {
         if (table === "mv_creator_leaderboard") {
           return mockQueryBuilder([
             {
-              id: "c1",
+              creator_id: "c1",
               handle: "@bangalore_creator",
               display_name: "BLR Creator",
               followers: 40000,
@@ -615,7 +615,7 @@ describe("warm-lead-detector", () => {
         if (table === "mv_creator_leaderboard") {
           return mockQueryBuilder([
             {
-              id: "c2",
+              creator_id: "c2",
               handle: "@warm_lead",
               display_name: "Warm Lead",
               followers: 30000,

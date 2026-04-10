@@ -97,6 +97,7 @@ export async function sendOutreachEmail(params: {
           campaign_id: message.campaign_id || null,
           outreach_status: "sent",
           last_message_direction: "outbound",
+          last_message_at: new Date().toISOString(),
         } as never)
         .select("id")
         .single();
@@ -121,11 +122,10 @@ export async function sendOutreachEmail(params: {
     creatorId: message.creator_id,
   });
 
-  // 6. Update message status to 'sending'
+  // 6. Link message to thread and set drafted_by
   await supabase
     .from("outreach_messages")
     .update({
-      status: "sending",
       thread_id: threadId,
       drafted_by: draftedBy || message.drafted_by || "human",
     } as never)
@@ -157,6 +157,7 @@ export async function sendOutreachEmail(params: {
       .update({
         status: "sent",
         sent_at: new Date().toISOString(),
+        thread_id: threadId,
         resend_message_id: gmailResponse.messageId,
         gmail_thread_id: gmailResponse.threadId,
       } as never)

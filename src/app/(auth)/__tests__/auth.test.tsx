@@ -165,12 +165,11 @@ describe("Signup page", () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  it("redirects to onboarding on successful signup", async () => {
+  it("shows email confirmation screen on successful signup", async () => {
     mockSignUp.mockResolvedValueOnce({
       data: { user: { id: "u1" }, session: {} },
       error: null,
     });
-    mockInsert.mockResolvedValueOnce({ error: null });
 
     render(<SignupPage />);
 
@@ -188,7 +187,9 @@ describe("Signup page", () => {
     );
 
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/onboarding/brand-profile");
+      expect(screen.getByText(/check your email/i)).toBeInTheDocument();
     });
+    expect(screen.getByText("new@example.com")).toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });

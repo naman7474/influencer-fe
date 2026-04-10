@@ -117,18 +117,27 @@ export async function POST(
 
       // Create campaign
       if (approval.action_type === "create_campaign") {
+        // Map free-text goal to campaign_goal enum
+        const goalText = ((payload.goal as string) || "").toLowerCase();
+        const goalEnum = goalText.includes("ugc") || goalText.includes("content generation")
+          ? "ugc_generation"
+          : goalText.includes("conversion") || goalText.includes("sale") || goalText.includes("revenue")
+            ? "conversion"
+            : "awareness";
+
         const { data: newCampaign, error: campaignError } = await supabase
           .from("campaigns")
           .insert({
             brand_id: brand.id,
             name: payload.name,
-            goal: payload.goal,
+            goal: goalEnum,
+            description: payload.goal || null,
             total_budget: payload.budget ?? null,
             start_date: payload.start_date ?? null,
             end_date: payload.end_date ?? null,
             default_discount_percentage: payload.discount_percent ?? null,
             brief_requirements: payload.brief_requirements ?? [],
-            status: "draft",
+            status: "active",
           } as never)
           .select("id")
           .single();

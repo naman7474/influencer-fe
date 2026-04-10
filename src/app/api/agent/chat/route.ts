@@ -151,6 +151,7 @@ export async function POST(request: NextRequest) {
       pageData,
       agentConfig,
       supabase: agentSupabase,
+      sessionId: resolvedSessionId,
     });
 
     // Return stream with sessionId header so client can track it

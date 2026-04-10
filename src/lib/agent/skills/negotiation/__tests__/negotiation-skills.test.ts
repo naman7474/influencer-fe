@@ -195,7 +195,7 @@ describe("budget-optimizer", () => {
       from: vi.fn((table: string) => {
         if (table === "campaigns") {
           return mockQueryBuilder([
-            { id: "camp-1", name: "Summer Sale", budget: 200000, status: "active" },
+            { id: "camp-1", name: "Summer Sale", total_budget: 200000, status: "active" },
           ]);
         }
         if (table === "campaign_creators") {
@@ -263,7 +263,7 @@ describe("budget-optimizer", () => {
       from: vi.fn((table: string) => {
         if (table === "campaigns") {
           return mockQueryBuilder([
-            { id: "camp-1", name: "Test", budget: 60000, status: "active" },
+            { id: "camp-1", name: "Test", total_budget: 60000, status: "active" },
           ]);
         }
         if (table === "campaign_creators") {
