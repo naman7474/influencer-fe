@@ -8,7 +8,7 @@ export function proposeOutreachTool(
 ) {
   return tool({
     description:
-      "Submit a drafted outreach email for human approval. The email will not be sent until the brand manager approves it. Always use this after outreach_drafter to request sending approval.",
+      "CALL THIS TOOL to submit a drafted outreach email for approval. This tool creates an approval_queue entry in the database — without calling it, no approval is created. Always call this after outreach_drafter to submit for sending approval.",
     inputSchema: z.object({
       message_id: z
         .string()

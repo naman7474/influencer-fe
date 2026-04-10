@@ -8,7 +8,7 @@ export function getCampaignInfoTool(
 ) {
   return tool({
     description:
-      "Get details about a specific campaign or list all campaigns for this brand. Use when the user asks about campaigns, campaign performance, or budget.",
+      "CALL THIS TOOL to fetch campaign details from the database. This is the ONLY way to get real campaign data — never make up campaign info. Call it when the user asks about campaigns, campaign performance, or budget.",
     inputSchema: z.object({
       campaign_id: z.string().optional().describe("Specific campaign UUID"),
       status: z

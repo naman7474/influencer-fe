@@ -5,8 +5,10 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Tool } from "ai";
+import { dynamicTool, jsonSchema } from "ai";
 import type { AgentConfig } from "@/lib/types/database";
 import type { SkillDefinition, SkillPermission } from "./types";
+import { executeCustomSkill } from "./custom-executor";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyTool = Tool<any, any>;
@@ -59,18 +61,66 @@ function isPermissionEnabled(
  * Build the complete toolset for an agent session.
  * Iterates all registered skills, checks permissions, and returns
  * a Record<string, Tool> ready for streamText().
+ *
+ * Also loads user-defined custom skills from the database.
  */
-export function buildToolset(
+export async function buildToolset(
   brandId: string,
   supabase: SupabaseClient,
   agentConfig: AgentConfig
-): Record<string, AnyTool> {
+): Promise<Record<string, AnyTool>> {
   const tools: Record<string, AnyTool> = {};
 
+  // 1. Load built-in skills (permission-filtered + per-skill filter)
+  const disabledSkills = new Set(
+    (Array.isArray((agentConfig as Record<string, unknown>).disabled_skills)
+      ? (agentConfig as Record<string, unknown>).disabled_skills as string[]
+      : [])
+  );
+
   for (const skill of registry) {
-    if (isPermissionEnabled(agentConfig, skill.permission)) {
+    if (
+      isPermissionEnabled(agentConfig, skill.permission) &&
+      !disabledSkills.has(skill.name)
+    ) {
       tools[skill.name] = skill.factory(brandId, supabase);
     }
+  }
+
+  // 2. Load custom skills from database
+  try {
+    const { data: customRows } = await supabase
+      .from("custom_skills")
+      .select("*")
+      .eq("brand_id", brandId)
+      .eq("is_active", true);
+
+    const customSkills = (customRows || []) as Array<{
+      name: string;
+      description: string;
+      input_schema: Record<string, unknown>;
+      execution_type: "prompt" | "api" | "query";
+      execution_config: Record<string, unknown>;
+    }>;
+
+    for (const row of customSkills) {
+      // Skip if name conflicts with built-in
+      if (tools[row.name]) continue;
+
+      tools[row.name] = dynamicTool({
+        description: row.description,
+        inputSchema: jsonSchema(row.input_schema as Parameters<typeof jsonSchema>[0]),
+        execute: async (params) =>
+          executeCustomSkill(
+            { execution_type: row.execution_type, execution_config: row.execution_config },
+            params as Record<string, unknown>,
+            brandId,
+            supabase
+          ),
+      });
+    }
+  } catch {
+    // If custom_skills table doesn't exist yet, silently continue with built-in only
   }
 
   return tools;

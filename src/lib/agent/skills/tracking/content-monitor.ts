@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export function contentMonitorTool(brandId: string, supabase: SupabaseClient) {
   return tool({
     description:
-      "Monitor content submission status across campaigns. Shows which creators have submitted, pending review, approved, or need revision. Use when the user asks about 'content status', 'who submitted content', 'content review', or 'submission status'.",
+      "CALL THIS TOOL to check content submission status from the database. Never guess submission status. Call it when the user asks about content status, who submitted, or submission review.",
     inputSchema: z.object({
       campaign_id: z.string().describe("Campaign UUID"),
       status_filter: z

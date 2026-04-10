@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { generateBrandMd } from "@/lib/agent/brand-md";
 import { DEFAULT_SOUL_MD } from "@/lib/agent/soul-md";
 import type { Brand } from "@/lib/types/database";
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient();
+    const authClient = await createServerSupabaseClient();
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await authClient.auth.getUser();
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const supabase = createServiceRoleClient();
 
     const { data: brandRow } = await supabase
       .from("brands")

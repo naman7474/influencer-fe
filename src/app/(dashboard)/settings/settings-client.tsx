@@ -46,10 +46,10 @@ import {
   Link as LinkIcon,
   LogOut,
   Plug,
-  RefreshCw,
   Save,
   Settings2,
   ShoppingBag,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   Upload,
@@ -57,8 +57,6 @@ import {
   X,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { AutonomySettings } from "@/components/agent/autonomy-settings";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -798,10 +796,10 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
       </TabsContent>
 
       {/* ============================================================= */}
-      {/*  AI Agent Tab                                                   */}
+      {/*  AI Agent Tab — Redirect to dedicated config page               */}
       {/* ============================================================= */}
       <TabsContent value="agent">
-        <AgentSettingsTab brand={brand} />
+        <AgentSettingsRedirect brand={brand} />
       </TabsContent>
 
       {/* ============================================================= */}
@@ -971,121 +969,34 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  AI Agent Settings Tab                                              */
+/*  AI Agent Settings — Redirect to dedicated config page              */
 /* ------------------------------------------------------------------ */
 
-function AgentSettingsTab({ brand }: { brand: Brand | null }) {
+function AgentSettingsRedirect({ brand }: { brand: Brand | null }) {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
   const [agentEnabled, setAgentEnabled] = useState(brand?.agent_enabled ?? false);
-  const [soulMd, setSoulMd] = useState("");
-  const [brandMd, setBrandMd] = useState("");
-  const [autonomyLevel, setAutonomyLevel] = useState("suggest_only");
-  const [actionAutonomy, setActionAutonomy] = useState<Record<string, string>>({});
-  const [budgetThreshold, setBudgetThreshold] = useState(25000);
-  const [regenerating, setRegenerating] = useState<string | null>(null);
-
-  // Load config on mount
-  useEffect(() => {
-    async function loadConfig() {
-      try {
-        const res = await fetch("/api/agent/config");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.config) {
-            setSoulMd(data.config.soul_md || "");
-            setBrandMd(data.config.brand_md || "");
-            setAutonomyLevel(data.config.autonomy_level || "suggest_only");
-            if (data.config.action_autonomy) {
-              setActionAutonomy(data.config.action_autonomy);
-            }
-            if (data.config.budget_auto_threshold != null) {
-              setBudgetThreshold(data.config.budget_auto_threshold);
-            }
-          }
-        }
-      } catch {
-        // Config may not exist yet
-      }
-      setLoading(false);
-    }
-    loadConfig();
-  }, []);
 
   async function handleToggleAgent() {
     const next = !agentEnabled;
     setAgentEnabled(next);
 
-    // If enabling for the first time, create config
     if (next) {
       const res = await fetch("/api/agent/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ autonomy_level: autonomyLevel }),
+        body: JSON.stringify({ autonomy_level: "suggest_only" }),
       });
       if (res.ok) {
-        const data = await res.json();
-        if (data.config) {
-          setSoulMd(data.config.soul_md || "");
-          setBrandMd(data.config.brand_md || "");
-        }
+        router.refresh();
       }
     } else {
-      // Disable agent on brand
       const supabase = createClient();
       await supabase
         .from("brands")
         .update({ agent_enabled: false } as never)
         .eq("id", brand!.id);
+      router.refresh();
     }
-    router.refresh();
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    setMessage(null);
-    try {
-      const res = await fetch("/api/agent/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          soul_md: soulMd,
-          autonomy_level: autonomyLevel,
-          action_autonomy: Object.keys(actionAutonomy).length > 0 ? actionAutonomy : undefined,
-          budget_auto_threshold: budgetThreshold,
-        }),
-      });
-      if (res.ok) {
-        setMessage("Agent configuration saved.");
-        router.refresh();
-      } else {
-        setMessage("Failed to save. Please try again.");
-      }
-    } catch {
-      setMessage("Failed to save. Please try again.");
-    }
-    setSaving(false);
-  }
-
-  async function handleRegenerate(type: "brand" | "soul") {
-    setRegenerating(type);
-    try {
-      const res = await fetch("/api/agent/generate-context", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (type === "brand") setBrandMd(data.brand_md || "");
-        if (type === "soul") setSoulMd(data.soul_md || "");
-      }
-    } catch {
-      // Error handled
-    }
-    setRegenerating(null);
   }
 
   if (!brand) {
@@ -1120,7 +1031,7 @@ function AgentSettingsTab({ brand }: { brand: Brand | null }) {
               </p>
               <p className="text-xs text-muted-foreground">
                 {agentEnabled
-                  ? "The chat panel is available in your sidebar."
+                  ? "The agent workspace is available in your sidebar."
                   : "Enable to start chatting with your AI agent."}
               </p>
             </div>
@@ -1132,141 +1043,23 @@ function AgentSettingsTab({ brand }: { brand: Brand | null }) {
         </CardContent>
       </Card>
 
-      {agentEnabled && !loading && (
-        <>
-          {/* Autonomy Level */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Autonomy Level</CardTitle>
-              <CardDescription>
-                Control how independently the agent can act.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col gap-3 max-w-lg">
-                <Select
-                  value={autonomyLevel}
-                  onValueChange={(val) => setAutonomyLevel(val as string)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="suggest_only">
-                      Suggest Only — Agent can only suggest, never act
-                    </SelectItem>
-                    <SelectItem value="draft_and_propose">
-                      Draft &amp; Propose — Agent drafts and proposes, you approve
-                    </SelectItem>
-                    <SelectItem value="auto_with_guardrails">
-                      Auto with Guardrails — Agent acts within limits, escalates
-                      edge cases
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+      {agentEnabled && (
+        <Card>
+          <CardContent className="py-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Agent Configuration</p>
+                <p className="text-xs text-muted-foreground">
+                  Manage personality, skills, automations, and autonomy settings in the dedicated agent workspace.
+                </p>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Per-Action Autonomy (Phase 5) */}
-          <AutonomySettings
-            actionAutonomy={actionAutonomy as Record<string, "AUTO" | "AUTO-DRAFT" | "APPROVAL-REQUIRED" | "ALWAYS-MANUAL">}
-            budgetThreshold={budgetThreshold}
-            onChange={(newAutonomy, newThreshold) => {
-              setActionAutonomy(newAutonomy);
-              setBudgetThreshold(newThreshold);
-            }}
-          />
-
-          {/* SOUL.md */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-base">
-                    Agent Personality (SOUL.md)
-                  </CardTitle>
-                  <CardDescription>
-                    Customize how your agent communicates. This controls its tone,
-                    style, and behavior rules.
-                  </CardDescription>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleRegenerate("soul")}
-                  disabled={regenerating === "soul"}
-                >
-                  <RefreshCw
-                    className={`size-3.5 ${regenerating === "soul" ? "animate-spin" : ""}`}
-                  />
-                  Reset to Default
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                value={soulMd}
-                onChange={(e) => setSoulMd(e.target.value)}
-                rows={12}
-                className="font-mono text-xs"
-                placeholder="Loading..."
-              />
-            </CardContent>
-          </Card>
-
-          {/* BRAND.md (read-only, regenerable) */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-base">
-                    Brand Context (BRAND.md)
-                  </CardTitle>
-                  <CardDescription>
-                    Auto-generated from your brand profile. The agent uses this to
-                    understand your brand.
-                  </CardDescription>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleRegenerate("brand")}
-                  disabled={regenerating === "brand"}
-                >
-                  <RefreshCw
-                    className={`size-3.5 ${regenerating === "brand" ? "animate-spin" : ""}`}
-                  />
-                  Regenerate
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                value={brandMd}
-                readOnly
-                rows={10}
-                className="font-mono text-xs bg-muted"
-                placeholder="Update your brand profile, then regenerate."
-              />
-            </CardContent>
-          </Card>
-
-          {/* Save */}
-          {message && (
-            <p
-              className={`text-sm ${
-                message.includes("saved") ? "text-success" : "text-destructive"
-              }`}
-            >
-              {message}
-            </p>
-          )}
-          <Button onClick={handleSave} disabled={saving} className="w-fit">
-            <Save className="size-3.5" />
-            {saving ? "Saving..." : "Save Agent Settings"}
-          </Button>
-        </>
+              <Button onClick={() => router.push("/agent/config")}>
+                <SlidersHorizontal className="size-3.5" />
+                Open Agent Config
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

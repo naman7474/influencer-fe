@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createServiceRoleClient } from "@/lib/supabase/server";
 import { scanNewMatchingCreators, scanReengagementOpportunities, scanAmbassadorCandidates } from "@/lib/agent/proactive/weekly-scan";
 import { generateRelationshipHealth, generatePerformanceTrends } from "@/lib/agent/proactive/monthly-scan";
 
@@ -21,10 +21,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Service-role client for cross-brand operations
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const supabase = createServiceRoleClient();
 
     const { searchParams } = new URL(request.url);
     const job = searchParams.get("job") || "weekly";

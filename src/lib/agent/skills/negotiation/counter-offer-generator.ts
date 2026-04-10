@@ -19,7 +19,7 @@ export function counterOfferGeneratorTool(
 ) {
   return tool({
     description:
-      "Generate a data-backed counter-offer for a creator negotiation. Uses market rates, CPI, engagement data, and past deals to recommend an optimal counter amount with justification. Use when the user asks to 'counter', 'negotiate rate', 'make an offer', or discusses pricing.",
+      "CALL THIS TOOL to generate a data-backed counter-offer. This tool queries real market rates and past deals from the database. Call it when the user asks to counter, negotiate rate, or make an offer.",
     inputSchema: z.object({
       campaign_id: z.string().describe("Campaign UUID"),
       creator_id: z.string().describe("Creator UUID"),
@@ -49,7 +49,7 @@ export function counterOfferGeneratorTool(
       // 2. Load campaign context
       const { data: campaignRaw } = await supabase
         .from("campaigns")
-        .select("id, name, budget")
+        .select("id, name, total_budget")
         .eq("id", params.campaign_id)
         .eq("brand_id", brandId)
         .single();

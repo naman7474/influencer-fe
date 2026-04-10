@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { convertToModelMessages } from "ai";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { runAgent } from "@/lib/agent/runtime";
 import type { AgentConfig } from "@/lib/types/database";
 
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { messages, pageContext, pageData } = await request.json();
+    const { messages, pageContext, pageData, sessionId } = await request.json();
 
     // Load agent config
     const { data: agentConfigRow } = await supabase
@@ -94,6 +94,22 @@ export async function POST(request: NextRequest) {
     // Convert UI messages to model messages for streamText
     const modelMessages = await convertToModelMessages(messages);
 
+    // Use service-role client for agent tool execution (bypasses RLS)
+    // The user-session client above is used for auth verification only
+    const agentSupabase = createServiceRoleClient();
+
+    // Resolve or create session
+    let resolvedSessionId: string | null = sessionId || null;
+    if (!resolvedSessionId) {
+      // Auto-create a session for the first message
+      const { data: newSession } = await agentSupabase
+        .from("agent_chat_sessions")
+        .insert({ brand_id: brand.id, title: "New Chat" } as never)
+        .select("id")
+        .single();
+      resolvedSessionId = (newSession as { id: string } | null)?.id ?? null;
+    }
+
     // Persist user message
     const lastMsg = messages[messages.length - 1];
     if (lastMsg?.role === "user") {
@@ -102,13 +118,29 @@ export async function POST(request: NextRequest) {
         ?.filter((p: Record<string, unknown>) => p.type === "text")
         .map((p: Record<string, unknown>) => p.text)
         .join("") || "";
-      await supabase.from("agent_conversations").insert({
+      await agentSupabase.from("agent_conversations").insert({
         brand_id: brand.id,
+        session_id: resolvedSessionId,
         role: "user",
         content: textContent,
         page_context: pageContext || null,
         page_data: pageData || null,
       } as never);
+
+      // Update session title from first user message
+      if (resolvedSessionId && messages.filter((m: { role: string }) => m.role === "user").length === 1 && textContent) {
+        const title = textContent.length > 60 ? textContent.slice(0, 57) + "..." : textContent;
+        await agentSupabase
+          .from("agent_chat_sessions")
+          .update({ title, updated_at: new Date().toISOString() } as never)
+          .eq("id", resolvedSessionId);
+      } else if (resolvedSessionId) {
+        // Touch updated_at
+        await agentSupabase
+          .from("agent_chat_sessions")
+          .update({ updated_at: new Date().toISOString() } as never)
+          .eq("id", resolvedSessionId);
+      }
     }
 
     // Run agent
@@ -118,10 +150,15 @@ export async function POST(request: NextRequest) {
       pageContext: pageContext || "/dashboard",
       pageData,
       agentConfig,
-      supabase,
+      supabase: agentSupabase,
     });
 
-    return result.toUIMessageStreamResponse();
+    // Return stream with sessionId header so client can track it
+    const response = result.toUIMessageStreamResponse();
+    if (resolvedSessionId) {
+      response.headers.set("X-Session-Id", resolvedSessionId);
+    }
+    return response;
   } catch (err) {
     console.error("[agent/chat] Error:", err);
     return new Response(

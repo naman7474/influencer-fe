@@ -12,6 +12,10 @@ import {
   BarChart3,
   MessageSquare,
   CheckSquare,
+  Wrench,
+  Zap,
+  Brain,
+  SlidersHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
@@ -37,7 +41,11 @@ const mainNavItems: NavItem[] = [
 
 const agentNavItems: NavItem[] = [
   { label: "Chat", href: "/agent", icon: MessageSquare },
+  { label: "Skills", href: "/agent/skills", icon: Wrench },
+  { label: "Automations", href: "/agent/automations", icon: Zap },
+  { label: "Memory", href: "/agent/memory", icon: Brain },
   { label: "Approvals", href: "/approvals", icon: CheckSquare },
+  { label: "Agent Config", href: "/agent/config", icon: SlidersHorizontal },
 ];
 
 interface MobileSidebarProps {
@@ -50,6 +58,7 @@ export function MobileSidebar({ brand, onNavigate }: MobileSidebarProps) {
 
   const isActive = (href: string) => {
     if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/";
+    if (href === "/agent") return pathname === "/agent";
     return pathname.startsWith(href);
   };
 
@@ -91,7 +100,13 @@ export function MobileSidebar({ brand, onNavigate }: MobileSidebarProps) {
 
         <Separator className="my-3" />
 
-        {/* Agent items — active when agent_enabled */}
+        {/* AI Agent section label */}
+        <div className="px-3 mb-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+            AI Agent
+          </span>
+        </div>
+
         {agentNavItems.map((item) => {
           const Icon = item.icon;
           const agentEnabled = brand?.agent_enabled ?? false;

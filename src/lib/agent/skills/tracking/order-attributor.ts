@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export function orderAttributorTool(brandId: string, supabase: SupabaseClient) {
   return tool({
     description:
-      "Trigger order reconciliation to find any missed attributed orders. Checks Shopify orders against campaign discount codes and UTM links. Use when the user asks to 'reconcile orders', 'check for missed orders', or 'sync attribution'.",
+      "CALL THIS TOOL to reconcile and attribute orders. Checks real Shopify orders against discount codes and UTM links in the database. Call it when the user asks to reconcile orders, check for missed orders, or sync attribution.",
     inputSchema: z.object({
       campaign_id: z
         .string()

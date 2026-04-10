@@ -19,7 +19,7 @@ export function rateBenchmarkerTool(
 ) {
   return tool({
     description:
-      "Look up market rate benchmarks for a creator based on tier, niche, and metrics. Also shows what this brand has paid historically. Use when the user asks about pricing, rates, or if a creator is worth a certain amount.",
+      "CALL THIS TOOL to look up real market rate benchmarks and brand payment history from the database. Never invent rate data. Call it when the user asks about pricing, rates, or what a creator is worth.",
     inputSchema: z.object({
       creator_id: z
         .string()

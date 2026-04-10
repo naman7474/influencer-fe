@@ -693,6 +693,8 @@ export type Database = {
           max_followers: number | null;
           start_date: string | null;
           end_date: string | null;
+          default_discount_percentage: number | null;
+          brief_requirements: Json | null;
           created_at: string;
           updated_at: string;
         };
@@ -714,6 +716,8 @@ export type Database = {
           max_followers?: number | null;
           start_date?: string | null;
           end_date?: string | null;
+          default_discount_percentage?: number | null;
+          brief_requirements?: Json | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -735,6 +739,8 @@ export type Database = {
           max_followers?: number | null;
           start_date?: string | null;
           end_date?: string | null;
+          default_discount_percentage?: number | null;
+          brief_requirements?: Json | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -745,11 +751,16 @@ export type Database = {
           id: string;
           campaign_id: string;
           creator_id: string;
+          brand_id: string | null;
           status: string;
           match_score_at_assignment: number | null;
           agreed_rate: number | null;
           content_deliverables: string[] | null;
           posts_delivered: number | null;
+          negotiation_status: string | null;
+          content_status: string | null;
+          submission_token: string | null;
+          submission_token_expires_at: string | null;
           assigned_at: string;
           confirmed_at: string | null;
           completed_at: string | null;
@@ -760,11 +771,16 @@ export type Database = {
           id?: string;
           campaign_id: string;
           creator_id: string;
+          brand_id?: string | null;
           status?: string;
           match_score_at_assignment?: number | null;
           agreed_rate?: number | null;
           content_deliverables?: string[] | null;
           posts_delivered?: number | null;
+          negotiation_status?: string | null;
+          content_status?: string | null;
+          submission_token?: string | null;
+          submission_token_expires_at?: string | null;
           assigned_at?: string;
           confirmed_at?: string | null;
           completed_at?: string | null;
@@ -775,11 +791,16 @@ export type Database = {
           id?: string;
           campaign_id?: string;
           creator_id?: string;
+          brand_id?: string | null;
           status?: string;
           match_score_at_assignment?: number | null;
           agreed_rate?: number | null;
           content_deliverables?: string[] | null;
           posts_delivered?: number | null;
+          negotiation_status?: string | null;
+          content_status?: string | null;
+          submission_token?: string | null;
+          submission_token_expires_at?: string | null;
           assigned_at?: string;
           confirmed_at?: string | null;
           completed_at?: string | null;
@@ -921,8 +942,13 @@ export type Database = {
           utm_source: string | null;
           utm_medium: string | null;
           utm_campaign: string | null;
+          utm_content: string | null;
+          utm_term: string | null;
           full_url: string | null;
+          short_code: string | null;
+          short_url: string | null;
           clicks: number;
+          click_count: number;
           orders_attributed: number;
           revenue_attributed: number;
           created_at: string;
@@ -937,8 +963,13 @@ export type Database = {
           utm_source?: string | null;
           utm_medium?: string | null;
           utm_campaign?: string | null;
+          utm_content?: string | null;
+          utm_term?: string | null;
           full_url?: string | null;
+          short_code?: string | null;
+          short_url?: string | null;
           clicks?: number;
+          click_count?: number;
           orders_attributed?: number;
           revenue_attributed?: number;
           created_at?: string;
@@ -953,8 +984,13 @@ export type Database = {
           utm_source?: string | null;
           utm_medium?: string | null;
           utm_campaign?: string | null;
+          utm_content?: string | null;
+          utm_term?: string | null;
           full_url?: string | null;
+          short_code?: string | null;
+          short_url?: string | null;
           clicks?: number;
+          click_count?: number;
           orders_attributed?: number;
           revenue_attributed?: number;
           created_at?: string;
@@ -1337,6 +1373,7 @@ export type Database = {
           can_manage_budget: boolean;
           can_scan_content: boolean;
           can_generate_reports: boolean;
+          disabled_skills: string[];
           action_autonomy: Json | null;
           budget_auto_threshold: number | null;
           model_provider: string;
@@ -1365,6 +1402,7 @@ export type Database = {
           can_manage_budget?: boolean;
           can_scan_content?: boolean;
           can_generate_reports?: boolean;
+          disabled_skills?: string[];
           action_autonomy?: Json | null;
           budget_auto_threshold?: number | null;
           model_provider?: string;
@@ -1393,6 +1431,7 @@ export type Database = {
           can_manage_budget?: boolean;
           can_scan_content?: boolean;
           can_generate_reports?: boolean;
+          disabled_skills?: string[];
           action_autonomy?: Json | null;
           budget_auto_threshold?: number | null;
           model_provider?: string;
@@ -1407,10 +1446,35 @@ export type Database = {
         };
       };
 
+      agent_chat_sessions: {
+        Row: {
+          id: string;
+          brand_id: string;
+          title: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          brand_id: string;
+          title?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          brand_id?: string;
+          title?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+
       agent_conversations: {
         Row: {
           id: string;
           brand_id: string;
+          session_id: string | null;
           role: "user" | "assistant" | "system" | "tool";
           content: string;
           tool_calls: Json | null;
@@ -1425,6 +1489,7 @@ export type Database = {
         Insert: {
           id?: string;
           brand_id: string;
+          session_id?: string | null;
           role: "user" | "assistant" | "system" | "tool";
           content: string;
           tool_calls?: Json | null;
@@ -1439,6 +1504,7 @@ export type Database = {
         Update: {
           id?: string;
           brand_id?: string;
+          session_id?: string | null;
           role?: "user" | "assistant" | "system" | "tool";
           content?: string;
           tool_calls?: Json | null;
@@ -1811,6 +1877,354 @@ export type Database = {
           markdown_content?: string | null;
         };
       };
+
+      campaign_discount_codes: {
+        Row: {
+          id: string;
+          campaign_id: string;
+          creator_id: string;
+          campaign_creator_id: string | null;
+          brand_id: string;
+          code: string;
+          discount_percentage: number;
+          shopify_discount_id: string | null;
+          usage_count: number;
+          revenue_attributed: number;
+          is_active: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          campaign_id: string;
+          creator_id: string;
+          campaign_creator_id?: string | null;
+          brand_id: string;
+          code: string;
+          discount_percentage?: number;
+          shopify_discount_id?: string | null;
+          usage_count?: number;
+          revenue_attributed?: number;
+          is_active?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          campaign_id?: string;
+          creator_id?: string;
+          campaign_creator_id?: string | null;
+          brand_id?: string;
+          code?: string;
+          discount_percentage?: number;
+          shopify_discount_id?: string | null;
+          usage_count?: number;
+          revenue_attributed?: number;
+          is_active?: boolean;
+        };
+      };
+
+      gifting_orders: {
+        Row: {
+          id: string;
+          campaign_id: string | null;
+          creator_id: string;
+          campaign_creator_id: string | null;
+          brand_id: string;
+          product_title: string;
+          variant_id: string | null;
+          retail_value: number | null;
+          note: string | null;
+          status: string;
+          shopify_draft_order_id: string | null;
+          shipping_address: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          campaign_id?: string | null;
+          creator_id: string;
+          campaign_creator_id?: string | null;
+          brand_id: string;
+          product_title: string;
+          variant_id?: string | null;
+          retail_value?: number | null;
+          note?: string | null;
+          status?: string;
+          shopify_draft_order_id?: string | null;
+          shipping_address?: Json | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          campaign_id?: string | null;
+          creator_id?: string;
+          campaign_creator_id?: string | null;
+          brand_id?: string;
+          product_title?: string;
+          variant_id?: string | null;
+          retail_value?: number | null;
+          note?: string | null;
+          status?: string;
+          shopify_draft_order_id?: string | null;
+          shipping_address?: Json | null;
+        };
+      };
+
+      content_submissions: {
+        Row: {
+          id: string;
+          campaign_id: string;
+          creator_id: string;
+          campaign_creator_id: string | null;
+          caption_text: string | null;
+          content_url: string | null;
+          status: string;
+          compliance_check: boolean;
+          compliance_scan_status: string | null;
+          submitted_at: string;
+          reviewed_at: string | null;
+          feedback: string | null;
+        };
+        Insert: {
+          id?: string;
+          campaign_id: string;
+          creator_id: string;
+          campaign_creator_id?: string | null;
+          caption_text?: string | null;
+          content_url?: string | null;
+          status?: string;
+          compliance_check?: boolean;
+          compliance_scan_status?: string | null;
+          submitted_at?: string;
+          reviewed_at?: string | null;
+          feedback?: string | null;
+        };
+        Update: {
+          id?: string;
+          campaign_id?: string;
+          creator_id?: string;
+          campaign_creator_id?: string | null;
+          caption_text?: string | null;
+          content_url?: string | null;
+          status?: string;
+          compliance_check?: boolean;
+          compliance_scan_status?: string | null;
+          submitted_at?: string;
+          reviewed_at?: string | null;
+          feedback?: string | null;
+        };
+      };
+
+      campaign_performance_summary: {
+        Row: {
+          id: string;
+          campaign_id: string;
+          campaign_creator_id: string | null;
+          creator_id: string | null;
+          brand_id: string;
+          total_orders: number;
+          total_revenue: number;
+          discount_orders: number;
+          utm_orders: number;
+          both_orders: number;
+          creator_cost: number;
+          last_order_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          campaign_id: string;
+          campaign_creator_id?: string | null;
+          creator_id?: string | null;
+          brand_id: string;
+          total_orders?: number;
+          total_revenue?: number;
+          discount_orders?: number;
+          utm_orders?: number;
+          both_orders?: number;
+          creator_cost?: number;
+          last_order_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          campaign_id?: string;
+          campaign_creator_id?: string | null;
+          creator_id?: string | null;
+          brand_id?: string;
+          total_orders?: number;
+          total_revenue?: number;
+          discount_orders?: number;
+          utm_orders?: number;
+          both_orders?: number;
+          creator_cost?: number;
+          last_order_at?: string | null;
+          updated_at?: string;
+        };
+      };
+
+      campaign_geo_snapshots: {
+        Row: {
+          id: string;
+          campaign_id: string;
+          brand_id: string;
+          city: string | null;
+          state: string | null;
+          snapshot_type: string;
+          sessions: number;
+          orders: number;
+          revenue: number;
+          conversion_rate: number | null;
+          session_lift_percent: number | null;
+          order_lift_percent: number | null;
+          revenue_lift_percent: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          campaign_id: string;
+          brand_id: string;
+          city?: string | null;
+          state?: string | null;
+          snapshot_type: string;
+          sessions?: number;
+          orders?: number;
+          revenue?: number;
+          conversion_rate?: number | null;
+          session_lift_percent?: number | null;
+          order_lift_percent?: number | null;
+          revenue_lift_percent?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          campaign_id?: string;
+          brand_id?: string;
+          city?: string | null;
+          state?: string | null;
+          snapshot_type?: string;
+          sessions?: number;
+          orders?: number;
+          revenue?: number;
+          conversion_rate?: number | null;
+          session_lift_percent?: number | null;
+          order_lift_percent?: number | null;
+          revenue_lift_percent?: number | null;
+        };
+      };
+
+      attributed_orders: {
+        Row: {
+          id: string;
+          brand_id: string;
+          campaign_id: string;
+          campaign_creator_id: string | null;
+          creator_id: string | null;
+          shopify_order_id: string;
+          shopify_order_number: number | null;
+          order_total: number | null;
+          order_subtotal: number | null;
+          total_price: number | null;
+          currency: string;
+          attribution_type: string;
+          discount_code_id: string | null;
+          utm_link_id: string | null;
+          discount_code_used: string | null;
+          customer_city: string | null;
+          customer_state: string | null;
+          customer_country: string | null;
+          line_items: Json;
+          is_first_order: boolean;
+          is_instagram_referred: boolean;
+          ordered_at: string | null;
+          raw_order: Json | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          brand_id: string;
+          campaign_id: string;
+          campaign_creator_id?: string | null;
+          creator_id?: string | null;
+          shopify_order_id: string;
+          shopify_order_number?: number | null;
+          order_total?: number | null;
+          order_subtotal?: number | null;
+          total_price?: number | null;
+          currency?: string;
+          attribution_type: string;
+          discount_code_id?: string | null;
+          utm_link_id?: string | null;
+          discount_code_used?: string | null;
+          customer_city?: string | null;
+          customer_state?: string | null;
+          customer_country?: string | null;
+          line_items?: Json;
+          is_first_order?: boolean;
+          is_instagram_referred?: boolean;
+          ordered_at?: string | null;
+          raw_order?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          brand_id?: string;
+          campaign_id?: string;
+          campaign_creator_id?: string | null;
+          creator_id?: string | null;
+          shopify_order_id?: string;
+          shopify_order_number?: number | null;
+          order_total?: number | null;
+          order_subtotal?: number | null;
+          total_price?: number | null;
+          currency?: string;
+          attribution_type?: string;
+          discount_code_id?: string | null;
+          utm_link_id?: string | null;
+          discount_code_used?: string | null;
+          customer_city?: string | null;
+          customer_state?: string | null;
+          customer_country?: string | null;
+          line_items?: Json;
+          is_first_order?: boolean;
+          is_instagram_referred?: boolean;
+          ordered_at?: string | null;
+          raw_order?: Json | null;
+          updated_at?: string;
+        };
+      };
+
+      webhook_logs: {
+        Row: {
+          id: string;
+          brand_id: string;
+          topic: string;
+          payload_hash: string;
+          processed: boolean;
+          error: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          brand_id: string;
+          topic: string;
+          payload_hash: string;
+          processed?: boolean;
+          error?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          brand_id?: string;
+          topic?: string;
+          payload_hash?: string;
+          processed?: boolean;
+          error?: string | null;
+        };
+      };
     };
 
     Views: {
@@ -2007,6 +2421,9 @@ export type CreatorUnsubscribeInsert = Database["public"]["Tables"]["creator_uns
 export type AgentConfig = Database["public"]["Tables"]["agent_config"]["Row"];
 export type AgentConfigInsert = Database["public"]["Tables"]["agent_config"]["Insert"];
 export type AgentConfigUpdate = Database["public"]["Tables"]["agent_config"]["Update"];
+
+export type AgentChatSession = Database["public"]["Tables"]["agent_chat_sessions"]["Row"];
+export type AgentChatSessionInsert = Database["public"]["Tables"]["agent_chat_sessions"]["Insert"];
 
 export type AgentConversation = Database["public"]["Tables"]["agent_conversations"]["Row"];
 export type AgentConversationInsert = Database["public"]["Tables"]["agent_conversations"]["Insert"];

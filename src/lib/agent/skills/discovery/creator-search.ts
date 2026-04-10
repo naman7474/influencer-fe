@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export function creatorSearchTool(brandId: string, supabase: SupabaseClient) {
   return tool({
     description:
-      "Search for creators/influencers matching specific criteria. Use when the user asks to find, discover, search, or recommend creators. Supports text search across handle, name, bio, and language.",
+      "CALL THIS TOOL to search the database for creators/influencers. This is the ONLY way to find real creator data — never invent creator profiles. Supports text search across handle, name, bio, and language. Call it whenever the user asks to find, discover, search, or recommend creators.",
     inputSchema: z.object({
       query: z
         .string()

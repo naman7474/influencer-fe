@@ -9,7 +9,7 @@ export function giftingOrderCreatorTool(
 ) {
   return tool({
     description:
-      "Create a product gifting order for a creator — sends free product via Shopify draft order. High-risk action: submits for approval. Use when the user asks to 'send product', 'gift product', 'send a sample', or 'create gifting order'.",
+      "CALL THIS TOOL to create a gifting order — sends free product via Shopify draft order. This tool writes to the database and submits for approval. Call it whenever the user asks to send product, gift product, send a sample, or create a gifting order.",
     inputSchema: z.object({
       campaign_id: z.string().describe("Campaign UUID"),
       creator_id: z.string().describe("Creator UUID"),

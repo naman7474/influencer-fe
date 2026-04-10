@@ -27,7 +27,7 @@ export function DashboardShell({ brand, children }: DashboardShellProps) {
   const [chatOpen, setChatOpen] = useState(false);
 
   const agentEnabled = brand?.agent_enabled ?? false;
-  const isAgentPage = pathname === "/agent";
+  const isAgentPage = pathname === "/agent" || pathname.startsWith("/agent/");
 
   return (
     <PageContextProvider>

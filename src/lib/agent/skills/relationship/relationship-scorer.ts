@@ -8,7 +8,7 @@ export function relationshipScorerTool(
 ) {
   return tool({
     description:
-      "Compute a relationship health score for a creator based on response rate, campaign completion, ROI trends, and recency. Use when the user asks about 'relationship health', 'how is our relationship with', or 'creator loyalty'.",
+      "CALL THIS TOOL to compute a relationship health score from real database data. Never invent relationship scores. Call it when the user asks about relationship health, creator loyalty, or how a relationship is going.",
     inputSchema: z.object({
       creator_id: z.string().describe("Creator UUID"),
     }),

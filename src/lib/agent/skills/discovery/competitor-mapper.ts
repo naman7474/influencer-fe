@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export function competitorMapperTool(brandId: string, supabase: SupabaseClient) {
   return tool({
     description:
-      "Find creators who work with or mention competitor brands. Use when the user asks about competitors' influencers, 'who works with [competitor]', or 'competitor analysis'.",
+      "CALL THIS TOOL to find creators who work with competitor brands. Queries real data from the database. Call it when the user asks about competitors' influencers or competitor analysis.",
     inputSchema: z.object({
       competitor_name: z
         .string()

@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export function briefGeneratorTool(brandId: string, supabase: SupabaseClient) {
   return tool({
     description:
-      "Generate a personalized creative brief for a creator in a campaign. Combines brand context, campaign goals, and creator profile to produce a tailored content brief. Use when the user asks to 'write a brief', 'create a content brief', or 'draft creator instructions'.",
+      "CALL THIS TOOL to generate a real creative brief using brand context, campaign data, and creator profile from the database. Call it when the user asks to write a brief, create a content brief, or draft creator instructions.",
     inputSchema: z.object({
       campaign_id: z.string().describe("Campaign UUID"),
       creator_id: z.string().describe("Creator UUID"),
@@ -15,7 +15,7 @@ export function briefGeneratorTool(brandId: string, supabase: SupabaseClient) {
       const { data: campaignRaw } = await supabase
         .from("campaigns")
         .select(
-          "id, name, goal, budget, start_date, end_date, discount_percent, brief_requirements, status"
+          "id, name, goal, total_budget, start_date, end_date, default_discount_percentage, brief_requirements, status"
         )
         .eq("id", params.campaign_id)
         .eq("brand_id", brandId)
@@ -126,7 +126,7 @@ export function briefGeneratorTool(brandId: string, supabase: SupabaseClient) {
 
         // Discount code
         discount_code: discountCode,
-        discount_percent: campaign.discount_percent,
+        discount_percent: campaign.default_discount_percentage,
 
         // Suggested content direction (based on creator's style)
         suggested_direction: buildSuggestedDirection(

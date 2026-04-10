@@ -8,7 +8,7 @@ export function getCreatorDetailsTool(
 ) {
   return tool({
     description:
-      "Get detailed profile information for a specific creator, including content intelligence, audience data, and brand match score. Use when the user asks about a specific creator.",
+      "CALL THIS TOOL to get a creator's full profile from the database — metrics, content intelligence, audience data, and match score. Never fabricate creator details. Call it when the user asks about a specific creator.",
     inputSchema: z.object({
       creator_id: z.string().optional().describe("Creator UUID"),
       handle: z

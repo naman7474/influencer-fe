@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export function roiCalculatorTool(brandId: string, supabase: SupabaseClient) {
   return tool({
     description:
-      "Calculate ROI and performance metrics for a campaign, including per-creator breakdown and attribution analysis. Use when the user asks about 'ROI', 'campaign performance', 'how is the campaign doing', or 'return on investment'.",
+      "CALL THIS TOOL to calculate real ROI and performance metrics from the database. Never estimate or invent ROI numbers. Call it when the user asks about ROI, campaign performance, or return on investment.",
     inputSchema: z.object({
       campaign_id: z.string().describe("Campaign UUID"),
       include_timeseries: z
@@ -18,7 +18,7 @@ export function roiCalculatorTool(brandId: string, supabase: SupabaseClient) {
       // 1. Verify campaign
       const { data: campaignRaw } = await supabase
         .from("campaigns")
-        .select("id, name, budget, start_date, end_date, status")
+        .select("id, name, total_budget, start_date, end_date, status")
         .eq("id", params.campaign_id)
         .eq("brand_id", brandId)
         .single();
@@ -102,7 +102,7 @@ export function roiCalculatorTool(brandId: string, supabase: SupabaseClient) {
       const result: Record<string, unknown> = {
         campaign: campaign.name,
         status: campaign.status,
-        budget: campaign.budget,
+        budget: campaign.total_budget,
         kpis: {
           total_spend: totalSpend,
           total_revenue: totalRevenue,
@@ -111,8 +111,8 @@ export function roiCalculatorTool(brandId: string, supabase: SupabaseClient) {
           cost_per_order:
             totalOrders > 0 ? Math.round(totalSpend / totalOrders) : 0,
           budget_utilization:
-            campaign.budget
-              ? Math.round((totalSpend / (campaign.budget as number)) * 100)
+            campaign.total_budget
+              ? Math.round((totalSpend / (campaign.total_budget as number)) * 100)
               : null,
         },
         attribution_breakdown: {

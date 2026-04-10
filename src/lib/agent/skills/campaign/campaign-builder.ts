@@ -6,7 +6,7 @@ import { createApprovalRequest } from "../_shared/approval-wrapper";
 export function campaignBuilderTool(brandId: string, supabase: SupabaseClient) {
   return tool({
     description:
-      "Create a new campaign from a natural-language brief. Because creating a campaign is a high-risk action, this will submit a proposal for brand-manager approval rather than creating it directly. Use when the user says 'create a campaign', 'launch a new campaign', or 'set up a campaign'.",
+      "CALL THIS TOOL to create a new campaign. This is the ONLY way to create campaigns — you cannot create one by describing it in text. This tool writes to the database and submits the campaign for brand-manager approval. Call it whenever the user asks to create, launch, or set up a campaign.",
     inputSchema: z.object({
       name: z.string().describe("Campaign name"),
       goal: z
@@ -77,6 +77,7 @@ export function campaignBuilderTool(brandId: string, supabase: SupabaseClient) {
       }
 
       // Submit for approval (high-risk action)
+      console.log("[campaign_builder] Submitting for approval, brandId:", brandId);
       const result = await createApprovalRequest(supabase, {
         brandId,
         actionType: "create_campaign",
@@ -88,6 +89,13 @@ export function campaignBuilderTool(brandId: string, supabase: SupabaseClient) {
         creatorId: undefined,
         messageId: undefined,
       });
+
+      // If approval creation failed, return error without campaign_preview
+      if ("error" in result) {
+        console.error("[campaign_builder] Approval creation failed:", result.error);
+        return result;
+      }
+      console.log("[campaign_builder] Approval created successfully");
 
       return {
         ...result,

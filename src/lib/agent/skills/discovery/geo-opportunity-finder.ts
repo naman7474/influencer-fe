@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export function geoOpportunityFinderTool(brandId: string, supabase: SupabaseClient) {
   return tool({
     description:
-      "Find geographic opportunities by matching brand's underperforming regions (from Shopify data) with available creators in those areas. Use when the user asks about 'geographic gaps', 'regional opportunities', 'which cities to target', or 'expand to new markets'.",
+      "CALL THIS TOOL to find geographic opportunities from real Shopify and creator data. Matches underperforming regions with available creators. Call it when the user asks about geographic gaps, regional opportunities, or new markets.",
     inputSchema: z.object({
       min_gap_score: z
         .number()

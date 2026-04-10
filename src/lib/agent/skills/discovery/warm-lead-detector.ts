@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export function warmLeadDetectorTool(brandId: string, supabase: SupabaseClient) {
   return tool({
     description:
-      "Detect warm leads — creators who already organically mention your brand or products but haven't been contacted yet. These have the highest outreach response rates. Use when the user asks about 'warm leads', 'organic mentions', 'who already talks about us', or 'easy wins'.",
+      "CALL THIS TOOL to find warm leads — creators who organically mention your brand. Queries real database data. Call it when the user asks about warm leads, organic mentions, or easy wins.",
     inputSchema: z.object({
       min_match_score: z
         .number()

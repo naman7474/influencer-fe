@@ -8,7 +8,7 @@ export function reengagementRecommenderTool(
 ) {
   return tool({
     description:
-      "Find high-performing past creators who haven't been contacted recently and recommend them for re-engagement. Use when the user asks about 're-engage', 'bring back creators', 'past performers', or 'who should we work with again'.",
+      "CALL THIS TOOL to find re-engagement opportunities from real past performance data. Call it when the user asks about re-engaging creators, bringing back past performers, or who to work with again.",
     inputSchema: z.object({
       min_roi: z
         .number()

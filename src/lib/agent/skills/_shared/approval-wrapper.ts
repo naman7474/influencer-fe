@@ -31,6 +31,14 @@ export async function createApprovalRequest(
   supabase: SupabaseClient,
   request: ApprovalRequest
 ): Promise<ApprovalResult | { error: string }> {
+  console.log("[approval-wrapper] Inserting approval:", {
+    brand_id: request.brandId,
+    action_type: request.actionType,
+    title: request.title,
+    has_payload: !!request.payload,
+    creator_id: request.creatorId || null,
+  });
+
   const { data: approvalRaw, error } = await supabase
     .from("approval_queue")
     .insert({
@@ -51,8 +59,11 @@ export async function createApprovalRequest(
   const approval = approvalRaw as Record<string, unknown> | null;
 
   if (error) {
+    console.error("[approval-wrapper] INSERT FAILED:", error.message, error.code, error.details);
     return { error: `Failed to create approval: ${error.message}` };
   }
+
+  console.log("[approval-wrapper] INSERT SUCCESS, id:", approval?.id);
 
   // Create notification for brand manager
   await supabase.from("notifications").insert({

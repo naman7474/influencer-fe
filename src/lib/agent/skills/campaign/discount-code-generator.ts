@@ -9,7 +9,7 @@ export function discountCodeGeneratorTool(
 ) {
   return tool({
     description:
-      "Generate personalized discount codes for creators in a campaign. Creates Shopify discount codes via Composio and stores tracking links. Medium-risk: submits for approval. Use when the user asks to 'create discount codes', 'generate codes', or 'set up tracking codes'.",
+      "CALL THIS TOOL to generate discount codes for campaign creators. This tool creates real Shopify discount codes and stores tracking data in the database. Submits for approval. Call it whenever the user asks to create discount codes, generate codes, or set up tracking codes.",
     inputSchema: z.object({
       campaign_id: z.string().describe("Campaign UUID"),
       discount_percent: z

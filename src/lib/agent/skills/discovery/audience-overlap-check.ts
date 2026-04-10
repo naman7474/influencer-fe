@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export function audienceOverlapCheckTool(brandId: string, supabase: SupabaseClient) {
   return tool({
     description:
-      "Check audience overlap between two or more creators. Shows shared audience percentage to help avoid redundant spend. Use when the user asks about 'audience overlap', 'shared followers', or 'deduplicate creators'.",
+      "CALL THIS TOOL to check audience overlap between creators using real data. Never estimate overlap percentages. Call it when the user asks about audience overlap, shared followers, or deduplication.",
     inputSchema: z.object({
       creator_ids: z
         .array(z.string())

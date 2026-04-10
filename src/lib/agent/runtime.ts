@@ -53,8 +53,8 @@ export async function runAgent(params: AgentRuntimeParams) {
     agentConfig,
   });
 
-  // 3. Build tool set from skill registry (permission-filtered)
-  const tools = buildToolset(brandId, supabase, agentConfig);
+  // 3. Build tool set from skill registry (permission-filtered + custom skills)
+  const tools = await buildToolset(brandId, supabase, agentConfig);
 
   // 4. Stream response with tool calling
   const result = streamText({

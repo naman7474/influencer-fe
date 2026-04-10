@@ -8,7 +8,7 @@ export function ambassadorIdentifierTool(
 ) {
   return tool({
     description:
-      "Identify creators who qualify as brand ambassadors — those with 3+ completed campaigns and consistently high performance. Use when the user asks about 'ambassadors', 'long-term partners', 'who are our best creators', or 'ambassador program'.",
+      "CALL THIS TOOL to identify ambassador candidates from real campaign history in the database. Call it when the user asks about ambassadors, long-term partners, or best creators.",
     inputSchema: z.object({
       min_campaigns: z
         .number()

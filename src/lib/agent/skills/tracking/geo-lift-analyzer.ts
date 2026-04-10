@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export function geoLiftAnalyzerTool(brandId: string, supabase: SupabaseClient) {
   return tool({
     description:
-      "Analyze geographic lift for a campaign by comparing pre-campaign and post-campaign Shopify data across regions. Shows which cities/regions saw improvements in sessions, orders, and revenue. Use when the user asks about 'geographic impact', 'geo lift', 'regional performance', or 'which cities improved'.",
+      "CALL THIS TOOL to analyze geographic sales lift from real Shopify data. Compares pre/post campaign data by region. Call it when the user asks about geographic impact, geo lift, or regional performance.",
     inputSchema: z.object({
       campaign_id: z.string().describe("Campaign UUID"),
     }),

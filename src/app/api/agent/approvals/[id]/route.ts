@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { sendOutreachEmail } from "@/lib/outreach/send-email";
 import { writeEpisode } from "@/lib/agent/memory/episode-writer";
 import type { ApprovalQueueItem } from "@/lib/types/database";
@@ -10,14 +10,16 @@ export async function POST(
 ) {
   try {
     const { id: approvalId } = await params;
-    const supabase = await createServerSupabaseClient();
+    const authClient = await createServerSupabaseClient();
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await authClient.auth.getUser();
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const supabase = createServiceRoleClient();
 
     const { data: brandData } = await supabase
       .from("brands")
@@ -115,21 +117,29 @@ export async function POST(
 
       // Create campaign
       if (approval.action_type === "create_campaign") {
-        const { data: newCampaign } = await supabase
+        const { data: newCampaign, error: campaignError } = await supabase
           .from("campaigns")
           .insert({
             brand_id: brand.id,
             name: payload.name,
             goal: payload.goal,
-            budget: payload.budget,
-            start_date: payload.start_date,
-            end_date: payload.end_date,
-            discount_percent: payload.discount_percent || 15,
-            brief_requirements: payload.brief_requirements || [],
+            total_budget: payload.budget ?? null,
+            start_date: payload.start_date ?? null,
+            end_date: payload.end_date ?? null,
+            default_discount_percentage: payload.discount_percent ?? null,
+            brief_requirements: payload.brief_requirements ?? [],
             status: "draft",
           } as never)
           .select("id")
           .single();
+
+        if (campaignError) {
+          console.error("[approvals] Campaign insert failed:", campaignError);
+          return NextResponse.json(
+            { error: "Failed to create campaign: " + campaignError.message },
+            { status: 500 }
+          );
+        }
 
         // Add pre-selected creators if any
         const creatorIds = (payload.creator_ids as string[]) || [];

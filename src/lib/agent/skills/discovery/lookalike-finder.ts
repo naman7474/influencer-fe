@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export function lookalikeFinder(brandId: string, supabase: SupabaseClient) {
   return tool({
     description:
-      "Find creators similar to a reference creator based on niche, tier, engagement rate, and audience profile. Use when the user says 'find more like this', 'similar creators', or 'lookalikes'.",
+      "CALL THIS TOOL to find similar creators in the database. Returns real matches based on niche, tier, and engagement. Call it when the user says find more like this, similar creators, or lookalikes.",
     inputSchema: z.object({
       creator_id: z
         .string()

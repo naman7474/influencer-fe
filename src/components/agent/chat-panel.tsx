@@ -1,20 +1,36 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
 import { usePageContext } from "./page-context-provider";
 import { ToolResultCard } from "./tool-cards";
 import { AgentMarkdown } from "./markdown";
-import { loadChatHistory } from "@/lib/agent/load-chat-history";
+import {
+  loadChatHistory,
+  loadSessions,
+  deleteSession,
+  type ChatSession,
+} from "@/lib/agent/load-chat-history";
 import {
   Sheet,
   SheetContent,
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Send, Trash2, X, Bot, User, Loader2, MessageSquare } from "lucide-react";
+import {
+  Sparkles,
+  Send,
+  Trash2,
+  X,
+  Bot,
+  User,
+  Loader2,
+  MessageSquare,
+  Plus,
+  ChevronLeft,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ChatPanelProps {
@@ -28,6 +44,12 @@ export function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [input, setInput] = useState("");
 
+  // Session state
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [showSessionList, setShowSessionList] = useState(false);
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
+
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
@@ -35,9 +57,10 @@ export function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
         body: {
           pageContext: pageContext.path,
           pageData: pageContext.data,
+          sessionId: activeSessionId,
         },
       }),
-    [pageContext.path, pageContext.data]
+    [pageContext.path, pageContext.data, activeSessionId]
   );
 
   const { messages, sendMessage, status, setMessages } = useChat({ transport });
@@ -45,15 +68,27 @@ export function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
   const isLoading = status === "streaming" || status === "submitted";
   const [historyLoaded, setHistoryLoaded] = useState(false);
 
-  // Load chat history from DB when panel opens
+  // Load sessions when panel opens
   useEffect(() => {
-    if (isOpen && !historyLoaded) {
-      loadChatHistory().then((history) => {
+    if (isOpen && !sessionsLoaded) {
+      loadSessions().then((s) => {
+        setSessions(s);
+        setSessionsLoaded(true);
+      });
+    }
+  }, [isOpen, sessionsLoaded]);
+
+  // Load chat history when active session changes
+  useEffect(() => {
+    if (isOpen && activeSessionId && !historyLoaded) {
+      loadChatHistory(activeSessionId).then((history) => {
         if (history.length > 0) setMessages(history);
         setHistoryLoaded(true);
       });
+    } else if (!activeSessionId) {
+      setHistoryLoaded(true);
     }
-  }, [isOpen, historyLoaded, setMessages]);
+  }, [isOpen, activeSessionId, historyLoaded, setMessages]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -64,23 +99,59 @@ export function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
 
   // Focus input when panel opens
   useEffect(() => {
-    if (isOpen && inputRef.current) {
+    if (isOpen && inputRef.current && !showSessionList) {
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [isOpen]);
+  }, [isOpen, showSessionList]);
 
-  const handleClear = () => {
+  const handleNewChat = useCallback(() => {
+    setActiveSessionId(null);
     setMessages([]);
     setHistoryLoaded(false);
-    fetch("/api/agent/conversations", { method: "DELETE" });
-  };
+    setShowSessionList(false);
+    inputRef.current?.focus();
+  }, [setMessages]);
 
-  const handleSend = (text?: string) => {
-    const msg = text ?? input.trim();
-    if (!msg || isLoading) return;
-    sendMessage({ text: msg });
-    setInput("");
-  };
+  const handleSelectSession = useCallback(
+    (session: ChatSession) => {
+      setActiveSessionId(session.id);
+      setMessages([]);
+      setHistoryLoaded(false);
+      setShowSessionList(false);
+    },
+    [setMessages]
+  );
+
+  const handleDeleteSession = useCallback(
+    async (sessionId: string) => {
+      await deleteSession(sessionId);
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      if (activeSessionId === sessionId) {
+        handleNewChat();
+      }
+    },
+    [activeSessionId, handleNewChat]
+  );
+
+  const handleSend = useCallback(
+    (text?: string) => {
+      const msg = text ?? input.trim();
+      if (!msg || isLoading) return;
+      sendMessage({ text: msg });
+      setInput("");
+
+      if (!activeSessionId) {
+        setTimeout(async () => {
+          const updated = await loadSessions();
+          setSessions(updated);
+          if (updated.length > 0) {
+            setActiveSessionId(updated[0].id);
+          }
+        }, 2000);
+      }
+    },
+    [input, isLoading, sendMessage, activeSessionId]
+  );
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -107,9 +178,9 @@ export function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
             <div>
               <h3 className="text-sm font-semibold">Marketing Agent</h3>
               <p className="text-xs text-muted-foreground">
-                {pageContext.pageType !== "other"
-                  ? `Viewing: ${pageContext.pageType.replace("_", " ")}`
-                  : "Ready to help"}
+                {activeSessionId
+                  ? sessions.find((s) => s.id === activeSessionId)?.title || "Chat"
+                  : "New Chat"}
               </p>
             </div>
           </div>
@@ -117,11 +188,20 @@ export function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
             <Button
               variant="ghost"
               size="icon"
-              onClick={handleClear}
+              onClick={() => setShowSessionList(!showSessionList)}
               className="h-8 w-8"
-              title="Clear conversation"
+              title="Chat history"
             >
-              <Trash2 className="h-4 w-4" />
+              <MessageSquare className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleNewChat}
+              className="h-8 w-8"
+              title="New chat"
+            >
+              <Plus className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"
@@ -134,80 +214,161 @@ export function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
           </div>
         </div>
 
-        {/* Messages */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-          {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
-              <Sparkles className="h-10 w-10 mb-3 opacity-20" />
-              <p className="text-sm font-medium">Hi! I&apos;m your marketing agent.</p>
-              <p className="text-xs mt-1 max-w-[240px]">
-                Ask me to find creators, draft outreach, check rates, or analyze campaigns.
-              </p>
-              <div className="mt-4 space-y-2 w-full max-w-[260px]">
-                {[
-                  "Find fitness creators in Mumbai",
-                  "What's the going rate for micro-influencers?",
-                  "How are my active campaigns performing?",
-                ].map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    onClick={() => handleSend(suggestion)}
-                    className="w-full rounded-lg border px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
+        {/* Session list overlay */}
+        {showSessionList ? (
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-3 py-2 border-b">
+              <button
+                onClick={() => setShowSessionList(false)}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ChevronLeft className="h-3 w-3" />
+                Back to chat
+              </button>
             </div>
-          )}
 
-          {messages.map((message) => (
-            <MessageBubble key={message.id} message={message} />
-          ))}
-
-          {isLoading && (
-            <div className="flex gap-2">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
-                <Bot className="h-3.5 w-3.5" />
-              </div>
-              <div className="rounded-lg bg-muted px-3 py-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Input */}
-        <div className="border-t p-3">
-          <div className="flex items-end gap-2">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder="Ask anything..."
-              rows={1}
-              className="flex-1 resize-none rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary,#6366F1)] focus:ring-offset-1 max-h-[120px]"
-              style={{
-                height: "auto",
-                minHeight: "36px",
-              }}
-              disabled={isLoading}
-            />
-            <Button
-              type="button"
-              size="icon"
-              disabled={isLoading || !input.trim()}
-              onClick={() => handleSend()}
-              className="h-9 w-9 shrink-0"
+            <button
+              onClick={handleNewChat}
+              className={cn(
+                "w-full text-left px-3 py-2.5 text-sm flex items-center gap-2 hover:bg-muted transition-colors border-b",
+                !activeSessionId && "bg-muted font-medium"
+              )}
             >
-              <Send className="h-4 w-4" />
-            </Button>
+              <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+              New Chat
+            </button>
+
+            {sessions.map((session) => (
+              <div
+                key={session.id}
+                className={cn(
+                  "group flex items-center gap-2 px-3 py-2.5 hover:bg-muted transition-colors cursor-pointer border-b border-muted",
+                  activeSessionId === session.id && "bg-muted font-medium"
+                )}
+                onClick={() => handleSelectSession(session)}
+              >
+                <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs truncate">{session.title}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {formatRelativeDate(session.updated_at)}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 opacity-0 group-hover:opacity-100 shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteSession(session.id);
+                  }}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+
+            {sessionsLoaded && sessions.length === 0 && (
+              <p className="px-3 py-6 text-xs text-muted-foreground text-center">
+                No previous chats
+              </p>
+            )}
           </div>
-        </div>
+        ) : (
+          <>
+            {/* Messages */}
+            <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+              {messages.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
+                  <Sparkles className="h-10 w-10 mb-3 opacity-20" />
+                  <p className="text-sm font-medium">Hi! I&apos;m your marketing agent.</p>
+                  <p className="text-xs mt-1 max-w-[240px]">
+                    Ask me to find creators, draft outreach, check rates, or analyze campaigns.
+                  </p>
+                  <div className="mt-4 space-y-2 w-full max-w-[260px]">
+                    {[
+                      "Find fitness creators in Mumbai",
+                      "What's the going rate for micro-influencers?",
+                      "How are my active campaigns performing?",
+                    ].map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        onClick={() => handleSend(suggestion)}
+                        className="w-full rounded-lg border px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {messages.map((message) => (
+                <MessageBubble key={message.id} message={message} />
+              ))}
+
+              {isLoading && (
+                <div className="flex gap-2">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
+                    <Bot className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="rounded-lg bg-muted px-3 py-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Input */}
+            <div className="border-t p-3">
+              <div className="flex items-end gap-2">
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  placeholder="Ask anything..."
+                  rows={1}
+                  className="flex-1 resize-none rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary,#6366F1)] focus:ring-offset-1 max-h-[120px]"
+                  style={{
+                    height: "auto",
+                    minHeight: "36px",
+                  }}
+                  disabled={isLoading}
+                />
+                <Button
+                  type="button"
+                  size="icon"
+                  disabled={isLoading || !input.trim()}
+                  onClick={() => handleSend()}
+                  className="h-9 w-9 shrink-0"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
       </SheetContent>
     </Sheet>
   );
+}
+
+/* ── Date formatting helper ────────────────────────────── */
+
+function formatRelativeDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
 }
 
 /* ── Tool label mapping ─────────────────────────────────── */

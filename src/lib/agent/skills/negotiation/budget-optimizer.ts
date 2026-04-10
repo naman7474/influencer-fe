@@ -16,7 +16,7 @@ export function budgetOptimizerTool(
 ) {
   return tool({
     description:
-      "Analyze campaign budget utilization and provide optimization insights. Shows available budget, confirmed spend, negotiation headroom, and warning flags. Use when the user asks about 'budget', 'how much is left', 'can we afford', or 'budget optimization'.",
+      "CALL THIS TOOL to analyze real campaign budget data from the database. Shows available budget, confirmed spend, and optimization insights. Call it when the user asks about budget, how much is left, or budget optimization.",
     inputSchema: z.object({
       campaign_id: z.string().describe("Campaign UUID"),
     }),
@@ -24,7 +24,7 @@ export function budgetOptimizerTool(
       // 1. Load campaign
       const { data: campaignRaw } = await supabase
         .from("campaigns")
-        .select("id, name, budget, status")
+        .select("id, name, total_budget, status")
         .eq("id", params.campaign_id)
         .eq("brand_id", brandId)
         .single();
@@ -32,7 +32,7 @@ export function budgetOptimizerTool(
 
       if (!campaign) return { error: "Campaign not found or access denied" };
 
-      const totalBudget = (campaign.budget as number) || 0;
+      const totalBudget = (campaign.total_budget as number) || 0;
       if (totalBudget === 0) {
         return {
           campaign: campaign.name,

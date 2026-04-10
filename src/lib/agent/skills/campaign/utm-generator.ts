@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export function utmGeneratorTool(brandId: string, supabase: SupabaseClient) {
   return tool({
     description:
-      "Generate UTM-tagged tracking links for creators in a campaign. Creates unique links with utm_source, utm_medium, utm_campaign, and utm_content parameters. Use when the user asks to 'create UTM links', 'generate tracking links', or 'set up attribution links'.",
+      "CALL THIS TOOL to generate and store UTM tracking links in the database. This is the only way to create real tracking links. Call it when the user asks to create UTM links, generate tracking links, or set up attribution.",
     inputSchema: z.object({
       campaign_id: z.string().describe("Campaign UUID"),
       creator_ids: z

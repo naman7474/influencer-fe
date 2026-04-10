@@ -15,6 +15,10 @@ import {
   CheckSquare,
   ChevronsLeft,
   ChevronsRight,
+  Wrench,
+  Zap,
+  Brain,
+  SlidersHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -47,7 +51,11 @@ const mainNavItems: NavItem[] = [
 
 const agentNavItems: NavItem[] = [
   { label: "Chat", href: "/agent", icon: MessageSquare },
+  { label: "Skills", href: "/agent/skills", icon: Wrench },
+  { label: "Automations", href: "/agent/automations", icon: Zap },
+  { label: "Memory", href: "/agent/memory", icon: Brain },
   { label: "Approvals", href: "/approvals", icon: CheckSquare },
+  { label: "Agent Config", href: "/agent/config", icon: SlidersHorizontal },
 ];
 
 interface SidebarProps {
@@ -89,6 +97,8 @@ export function Sidebar({ brand }: SidebarProps) {
 
   const isActive = (href: string) => {
     if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/";
+    // Exact match for /agent to avoid highlighting on /agent/skills etc.
+    if (href === "/agent") return pathname === "/agent";
     return pathname.startsWith(href);
   };
 
@@ -150,10 +160,16 @@ export function Sidebar({ brand }: SidebarProps) {
           return <div key={item.href}>{linkContent}</div>;
         })}
 
-        {/* Separator */}
+        {/* Separator + Agent section */}
         <div className="my-3 h-px bg-sidebar-border" />
+        {!collapsed && (
+          <div className="px-3 mb-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+              AI Agent
+            </span>
+          </div>
+        )}
 
-        {/* Agent items — active when agent_enabled, otherwise greyed out */}
         {agentNavItems.map((item) => {
           const Icon = item.icon;
           const agentEnabled = brand?.agent_enabled ?? false;

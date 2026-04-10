@@ -8,7 +8,7 @@ export function churnPredictorTool(
 ) {
   return tool({
     description:
-      "Predict which creators are at risk of churning (declining engagement, longer response times, fewer campaigns). Use when the user asks about 'churn risk', 'who might leave', 'declining creators', or 'at-risk relationships'.",
+      "CALL THIS TOOL to predict churn risk from real engagement and activity data. Call it when the user asks about churn risk, at-risk relationships, or declining creators.",
     inputSchema: z.object({
       limit: z
         .number()

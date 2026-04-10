@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export function campaignReporterTool(brandId: string, supabase: SupabaseClient) {
   return tool({
     description:
-      "Generate a comprehensive campaign report combining performance data, attribution, geographic impact, and content analysis. Stores the report for future reference. Use when the user asks for a 'campaign report', 'performance summary', 'campaign recap', or 'final report'.",
+      "CALL THIS TOOL to generate a campaign report from real data. This tool queries the database and stores the report. Call it when the user asks for a campaign report, performance summary, or final report.",
     inputSchema: z.object({
       campaign_id: z.string().describe("Campaign UUID"),
       report_type: z
@@ -18,7 +18,7 @@ export function campaignReporterTool(brandId: string, supabase: SupabaseClient) 
       // 1. Load campaign
       const { data: campaignRaw } = await supabase
         .from("campaigns")
-        .select("id, name, goal, budget, start_date, end_date, status, discount_percent")
+        .select("id, name, goal, total_budget, start_date, end_date, status, default_discount_percentage")
         .eq("id", params.campaign_id)
         .eq("brand_id", brandId)
         .single();
@@ -91,7 +91,7 @@ export function campaignReporterTool(brandId: string, supabase: SupabaseClient) 
         campaign_goal: campaign.goal,
         campaign_status: campaign.status,
         dates: { start: campaign.start_date, end: campaign.end_date },
-        budget: campaign.budget,
+        budget: campaign.total_budget,
         total_spend: totalSpend,
         total_revenue: totalRevenue,
         total_orders: totalOrders,
@@ -99,8 +99,8 @@ export function campaignReporterTool(brandId: string, supabase: SupabaseClient) 
           totalSpend > 0
             ? Math.round((totalRevenue / totalSpend) * 100) / 100
             : 0,
-        budget_utilization: campaign.budget
-          ? Math.round((totalSpend / (campaign.budget as number)) * 100)
+        budget_utilization: campaign.total_budget
+          ? Math.round((totalSpend / (campaign.total_budget as number)) * 100)
           : null,
         creators_count: campaignCreators.length,
         confirmed_creators: campaignCreators.filter(

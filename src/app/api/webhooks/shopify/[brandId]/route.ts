@@ -259,6 +259,7 @@ async function handleOrderCreate(supabase: DB, brandId: string, order: any) {
     await updatePerformanceAggregate(supabase, {
       campaignId: attr.campaign_id,
       campaignCreatorId: attr.campaign_creator_id,
+      creatorId: attr.creator_id,
       brandId,
       deltaOrders: 1,
       deltaRevenue: parseFloat(order.total_price),
@@ -336,6 +337,7 @@ async function updatePerformanceAggregate(
   params: {
     campaignId: string;
     campaignCreatorId: string;
+    creatorId?: string;
     brandId: string;
     deltaOrders: number;
     deltaRevenue: number;
@@ -389,6 +391,7 @@ async function updatePerformanceAggregate(
     await supabase.from("campaign_performance_summary").insert({
       campaign_id: params.campaignId,
       campaign_creator_id: params.campaignCreatorId,
+      creator_id: params.creatorId || null,
       brand_id: params.brandId,
       total_orders: params.deltaOrders,
       total_revenue: params.deltaRevenue,

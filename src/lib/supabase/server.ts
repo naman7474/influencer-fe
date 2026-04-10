@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { Database } from "@/lib/types/database";
 
@@ -25,5 +26,17 @@ export async function createServerSupabaseClient() {
         },
       },
     }
+  );
+}
+
+/**
+ * Service-role client — bypasses RLS.
+ * Use for server-side operations where the agent acts on behalf of the user
+ * (e.g. inserting into approval_queue, writing episodes, etc.)
+ */
+export function createServiceRoleClient() {
+  return createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_KEY!
   );
 }

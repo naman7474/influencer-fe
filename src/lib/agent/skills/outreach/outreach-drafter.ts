@@ -13,7 +13,7 @@ export function outreachDrafterTool(
 ) {
   return tool({
     description:
-      "Draft a personalized outreach email to a creator. The draft will be saved and require approval before sending. Use when the user asks to draft, write, or compose outreach to a creator.",
+      "CALL THIS TOOL to draft a personalized outreach email. This tool saves the draft to the database — you cannot draft outreach by writing it in chat. The draft requires approval before sending. Call it whenever the user asks to draft, write, or compose outreach to a creator.",
     inputSchema: z.object({
       creator_id: z.string().describe("Creator UUID to draft outreach for"),
       campaign_id: z

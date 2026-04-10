@@ -8,7 +8,7 @@ export function dealMemoGeneratorTool(
 ) {
   return tool({
     description:
-      "Generate a structured deal memo summarizing the agreed terms between brand and creator. Stores the memo for reference. Use when the user says 'create deal memo', 'summarize the deal', or 'finalize terms'.",
+      "CALL THIS TOOL to generate and store a deal memo in the database. This is the only way to create a real deal memo. Call it when the user says create deal memo, summarize the deal, or finalize terms.",
     inputSchema: z.object({
       campaign_id: z.string().describe("Campaign UUID"),
       creator_id: z.string().describe("Creator UUID"),

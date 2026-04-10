@@ -19,7 +19,7 @@ export function complianceScannerTool(
 ) {
   return tool({
     description:
-      "Scan a content submission for compliance with campaign brief requirements, ad disclosure, brand mentions, and discount code inclusion. Use when the user asks to 'check compliance', 'review content', 'scan submission', or 'is this post compliant'.",
+      "CALL THIS TOOL to scan content for compliance. Checks ad disclosure, brand mentions, and brief requirements against real submission data. Call it when the user asks to check compliance, review content, or scan a submission.",
     inputSchema: z.object({
       submission_id: z.string().describe("Content submission UUID"),
     }),
@@ -40,7 +40,7 @@ export function complianceScannerTool(
       const { data: campaignRaw } = await supabase
         .from("campaigns")
         .select(
-          "id, name, brand_id, discount_percent, brief_requirements"
+          "id, name, brand_id, default_discount_percentage, brief_requirements"
         )
         .eq("id", submission.campaign_id)
         .eq("brand_id", brandId)
