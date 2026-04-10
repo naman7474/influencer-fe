@@ -4,9 +4,12 @@
 /* ------------------------------------------------------------------ */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { tool } from "ai";
+import type { Tool } from "ai";
 import type { AgentConfig } from "@/lib/types/database";
 import type { SkillDefinition, SkillPermission } from "./types";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyTool = Tool<any, any>;
 
 // Central list of all registered skills
 const registry: SkillDefinition[] = [];
@@ -61,8 +64,8 @@ export function buildToolset(
   brandId: string,
   supabase: SupabaseClient,
   agentConfig: AgentConfig
-): Record<string, ReturnType<typeof tool>> {
-  const tools: Record<string, ReturnType<typeof tool>> = {};
+): Record<string, AnyTool> {
+  const tools: Record<string, AnyTool> = {};
 
   for (const skill of registry) {
     if (isPermissionEnabled(agentConfig, skill.permission)) {

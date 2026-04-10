@@ -81,16 +81,16 @@ export function churnPredictorTool(
         }
 
         return {
-          ...r,
+          ...(r as Record<string, unknown>),
           churn_score: Math.min(churnScore, 100),
           signals,
-        };
+        } as Record<string, unknown>;
       });
 
       // 3. Filter to at-risk (score > 20) and sort by churn score desc
       const atRisk = scored
-        .filter((r) => r.churn_score > 20)
-        .sort((a, b) => b.churn_score - a.churn_score)
+        .filter((r) => (r.churn_score as number) > 20)
+        .sort((a, b) => (b.churn_score as number) - (a.churn_score as number))
         .slice(0, params.limit ?? 10);
 
       if (atRisk.length === 0) {
@@ -123,14 +123,14 @@ export function churnPredictorTool(
           tier: creator?.tier,
           followers: creator?.followers,
           churn_risk: {
-            score: r.churn_score,
+            score: r.churn_score as number,
             level:
-              r.churn_score >= 60
+              (r.churn_score as number) >= 60
                 ? "high"
-                : r.churn_score >= 40
+                : (r.churn_score as number) >= 40
                   ? "medium"
                   : "low",
-            signals: r.signals,
+            signals: r.signals as string[],
           },
           relationship: {
             total_campaigns: r.total_campaigns,
@@ -139,7 +139,7 @@ export function churnPredictorTool(
             total_spend: r.total_spend,
           },
           recommendation:
-            r.churn_score >= 60
+            (r.churn_score as number) >= 60
               ? "Urgent re-engagement needed. Consider a personalized outreach or special offer."
               : "Monitor closely. Schedule a check-in message.",
         };

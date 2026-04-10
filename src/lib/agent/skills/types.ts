@@ -4,7 +4,10 @@
 /* ------------------------------------------------------------------ */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { tool } from "ai";
+import type { Tool } from "ai";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyTool = Tool<any, any>;
 
 export type SkillCategory =
   | "discovery"
@@ -46,7 +49,7 @@ export interface SkillDefinition {
   /** Risk level — high-risk skills may route through approval wrapper */
   riskLevel: RiskLevel;
   /** Factory that builds the Vercel AI SDK tool instance */
-  factory: (brandId: string, supabase: SupabaseClient) => ReturnType<typeof tool>;
+  factory: (brandId: string, supabase: SupabaseClient) => AnyTool;
 }
 
 /**

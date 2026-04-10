@@ -182,7 +182,7 @@ export function campaignReporterTool(brandId: string, supabase: SupabaseClient) 
 
 function generateRecommendations(
   summary: Record<string, unknown>,
-  perCreator: { handle: string; roi: number; spend: number; revenue: number; orders: number }[],
+  perCreator: Record<string, unknown>[],
   campaignCreators: Record<string, unknown>[]
 ): Record<string, unknown> {
   const rebook: string[] = [];
@@ -190,11 +190,15 @@ function generateRecommendations(
   const ambassadorCandidates: string[] = [];
 
   for (const c of perCreator) {
-    if (c.roi >= 3 && c.orders >= 5) {
-      rebook.push(c.handle);
-      if (c.roi >= 5) ambassadorCandidates.push(c.handle);
-    } else if (c.roi < 1 && c.spend > 0) {
-      phaseOut.push(c.handle);
+    const roi = (c.roi as number) || 0;
+    const orders = (c.orders as number) || 0;
+    const spend = (c.spend as number) || 0;
+    const handle = (c.handle as string) || "unknown";
+    if (roi >= 3 && orders >= 5) {
+      rebook.push(handle);
+      if (roi >= 5) ambassadorCandidates.push(handle);
+    } else if (roi < 1 && spend > 0) {
+      phaseOut.push(handle);
     }
   }
 

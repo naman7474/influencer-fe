@@ -92,7 +92,7 @@ export function lookalikeFinder(brandId: string, supabase: SupabaseClient) {
           followerSim * 0.25 + erSim * 0.25 + cpiSim * 0.25 + tierBonus + locationBonus + 0.1
         );
 
-        return { ...c, similarity_score: Math.round(similarity * 100) };
+        return { ...(c as Record<string, unknown>), similarity_score: Math.round(similarity * 100) } as Record<string, unknown>;
       });
 
       // 4. Sort by similarity and limit
