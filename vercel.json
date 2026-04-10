@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/agent-proactive?job=weekly",
+      "schedule": "0 9 * * 1"
+    },
+    {
+      "path": "/api/cron/agent-proactive?job=monthly",
+      "schedule": "0 9 1 * *"
+    },
+    {
+      "path": "/api/cron/agent-proactive?job=maintenance",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}
