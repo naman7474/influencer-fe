@@ -80,7 +80,7 @@ export function ToolResultCard({ tool, compact = false }: ToolCardProps) {
 
 /* ── Creator Search Card ─────────────────────────────────── */
 
-function CreatorSearchCard({
+export function CreatorSearchCard({
   result,
   compact,
 }: {
@@ -152,7 +152,7 @@ function CreatorSearchCard({
 
 /* ── Outreach Draft Card ─────────────────────────────────── */
 
-function OutreachDraftCard({ result }: { result: Record<string, unknown> }) {
+export function OutreachDraftCard({ result }: { result: Record<string, unknown> }) {
   return (
     <div className="mt-2 rounded-lg border bg-background p-3 text-xs">
       <p className="font-semibold mb-1">Draft saved</p>
@@ -169,7 +169,7 @@ function OutreachDraftCard({ result }: { result: Record<string, unknown> }) {
 
 /* ── Approval Pending Card ───────────────────────────────── */
 
-function ApprovalPendingCard({ message }: { message: string }) {
+export function ApprovalPendingCard({ message }: { message: string }) {
   return (
     <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 p-3 text-xs">
       <p className="font-semibold text-amber-700 dark:text-amber-400">
@@ -190,7 +190,7 @@ function ApprovalPendingCard({ message }: { message: string }) {
 
 /* ── Rate Benchmark Card ─────────────────────────────────── */
 
-function RateBenchmarkCard({ result }: { result: Record<string, unknown> }) {
+export function RateBenchmarkCard({ result }: { result: Record<string, unknown> }) {
   const rate = result.market_rate as Record<string, unknown>;
   return (
     <div className="mt-2 rounded-lg border bg-background p-3 text-xs">
@@ -238,7 +238,7 @@ function RateBenchmarkCard({ result }: { result: Record<string, unknown> }) {
 
 /* ── Budget Card ─────────────────────────────────────────── */
 
-function BudgetCard({ result }: { result: Record<string, unknown> }) {
+export function BudgetCard({ result }: { result: Record<string, unknown> }) {
   const bs = result.budget_summary as Record<string, unknown>;
   return (
     <div className="mt-2 rounded-lg border bg-background p-3 text-xs">
@@ -275,7 +275,7 @@ function BudgetCard({ result }: { result: Record<string, unknown> }) {
 
 /* ── Deal Memo Card ──────────────────────────────────────── */
 
-function DealMemoCard({ result }: { result: Record<string, unknown> }) {
+export function DealMemoCard({ result }: { result: Record<string, unknown> }) {
   const memo = result.deal_memo as Record<string, unknown>;
   const terms = memo.terms as Record<string, unknown>;
   return (
@@ -301,7 +301,7 @@ function DealMemoCard({ result }: { result: Record<string, unknown> }) {
 
 /* ── ROI Card ────────────────────────────────────────────── */
 
-function ROICard({ result }: { result: Record<string, unknown> }) {
+export function ROICard({ result }: { result: Record<string, unknown> }) {
   const kpis = result.kpis as Record<string, unknown>;
   return (
     <div className="mt-2 rounded-lg border bg-background p-3 text-xs">
@@ -328,7 +328,7 @@ function ROICard({ result }: { result: Record<string, unknown> }) {
 
 /* ── Campaign Overview Card ──────────────────────────────── */
 
-function CampaignOverviewCard({
+export function CampaignOverviewCard({
   result,
   compact,
 }: {
@@ -369,7 +369,7 @@ function CampaignOverviewCard({
 
 /* ── Content Tracker Card ────────────────────────────────── */
 
-function ContentTrackerCard({
+export function ContentTrackerCard({
   result,
   compact,
 }: {

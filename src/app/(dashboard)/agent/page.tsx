@@ -5,8 +5,19 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
 import { usePageContext } from "@/components/agent/page-context-provider";
-import { ToolResultCard } from "@/components/agent/tool-cards";
 import { AgentMarkdown } from "@/components/agent/markdown";
+import {
+  HighlightFocusProvider,
+  useHighlightFocus,
+} from "@/components/agent/highlight-focus-context";
+import { HighlightPill } from "@/components/agent/highlight-pill";
+import { HighlightsPanel } from "@/components/agent/highlights-panel";
+import {
+  extractHighlights,
+  findHighlightByHandle,
+  indexHighlights,
+  type Highlight,
+} from "@/lib/agent/highlights";
 import {
   loadChatHistory,
   loadSessions,
@@ -14,6 +25,7 @@ import {
   deleteSession,
   type ChatSession,
 } from "@/lib/agent/load-chat-history";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import {
   Sparkles,
@@ -22,51 +34,49 @@ import {
   User,
   Loader2,
   Search,
-  Users,
-  BarChart3,
   Mail,
   ArrowUp,
   Handshake,
   TrendingUp,
   Target,
-  Gift,
-  FileText,
-  Zap,
+  BarChart3,
   MessageSquare,
   Plus,
   PanelLeftClose,
   PanelLeftOpen,
-  Clock,
+  PanelRightClose,
+  PanelRightOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/* ── Tool name → friendly label + icon mapping ──────────── */
+/* ── Tool name → friendly label mapping (in-flight state) ── */
 
-const TOOL_LABELS: Record<string, { label: string; icon: string }> = {
-  creator_search: { label: "Searching creators", icon: "search" },
-  get_creator_details: { label: "Loading creator profile", icon: "user" },
-  lookalike_finder: { label: "Finding similar creators", icon: "users" },
-  warm_lead_detector: { label: "Detecting warm leads", icon: "zap" },
-  competitor_mapper: { label: "Mapping competitor creators", icon: "target" },
-  geo_opportunity_finder: { label: "Finding geo opportunities", icon: "map" },
-  audience_overlap_check: { label: "Checking audience overlap", icon: "layers" },
-  outreach_drafter: { label: "Drafting outreach email", icon: "mail" },
-  propose_outreach: { label: "Submitting for approval", icon: "check" },
-  rate_benchmarker: { label: "Benchmarking rates", icon: "chart" },
-  counter_offer_generator: { label: "Generating counter-offer", icon: "handshake" },
-  deal_memo_generator: { label: "Creating deal memo", icon: "file" },
-  budget_optimizer: { label: "Analyzing budget", icon: "wallet" },
-  roi_calculator: { label: "Calculating ROI", icon: "trending" },
-  campaign_overview: { label: "Loading campaigns", icon: "layers" },
-  campaign_builder: { label: "Building campaign", icon: "plus" },
-  content_tracker: { label: "Tracking content", icon: "eye" },
-  brief_generator: { label: "Generating brief", icon: "file" },
-  discount_code_generator: { label: "Creating discount codes", icon: "tag" },
-  gifting_order_creator: { label: "Creating gifting order", icon: "gift" },
-  relationship_scorer: { label: "Scoring relationship", icon: "heart" },
-  ambassador_identifier: { label: "Identifying ambassadors", icon: "star" },
-  churn_predictor: { label: "Predicting churn risk", icon: "alert" },
-  reengagement_recommender: { label: "Finding re-engagement targets", icon: "refresh" },
+const TOOL_LABELS: Record<string, { label: string }> = {
+  creator_search: { label: "Searching creators" },
+  get_creator_details: { label: "Loading creator profile" },
+  lookalike_finder: { label: "Finding similar creators" },
+  warm_lead_detector: { label: "Detecting warm leads" },
+  competitor_mapper: { label: "Mapping competitor creators" },
+  geo_opportunity_finder: { label: "Finding geo opportunities" },
+  audience_overlap_check: { label: "Checking audience overlap" },
+  outreach_drafter: { label: "Drafting outreach email" },
+  propose_outreach: { label: "Submitting for approval" },
+  rate_benchmarker: { label: "Benchmarking rates" },
+  counter_offer_generator: { label: "Generating counter-offer" },
+  deal_memo_generator: { label: "Creating deal memo" },
+  budget_optimizer: { label: "Analyzing budget" },
+  roi_calculator: { label: "Calculating ROI" },
+  campaign_overview: { label: "Loading campaigns" },
+  campaign_builder: { label: "Building campaign" },
+  campaign_status_manager: { label: "Updating campaign status" },
+  content_tracker: { label: "Tracking content" },
+  brief_generator: { label: "Generating brief" },
+  discount_code_generator: { label: "Creating discount codes" },
+  gifting_order_creator: { label: "Creating gifting order" },
+  relationship_scorer: { label: "Scoring relationship" },
+  ambassador_identifier: { label: "Identifying ambassadors" },
+  churn_predictor: { label: "Predicting churn risk" },
+  reengagement_recommender: { label: "Finding re-engagement targets" },
 };
 
 /* ── Capability cards for empty state ───────────────────── */
@@ -75,8 +85,10 @@ const capabilities = [
   {
     icon: Search,
     title: "Discover Creators",
-    description: "Search by niche, location, tier, language, or engagement metrics",
-    color: "text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-950/40",
+    description:
+      "Search by niche, location, tier, language, or engagement metrics",
+    color:
+      "text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-950/40",
     prompts: [
       "Find beauty micro-influencers who speak Tamil",
       "Show me top-performing fitness creators",
@@ -86,8 +98,10 @@ const capabilities = [
   {
     icon: Mail,
     title: "Outreach & Email",
-    description: "Draft personalized emails and submit for approval before sending",
-    color: "text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-950/40",
+    description:
+      "Draft personalized emails and submit for approval before sending",
+    color:
+      "text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-950/40",
     prompts: [
       "Draft outreach to @creator for our Diwali campaign",
       "Write a follow-up email for creators who haven't replied",
@@ -96,8 +110,10 @@ const capabilities = [
   {
     icon: Handshake,
     title: "Negotiate Deals",
-    description: "Get market rates, generate counter-offers, and create deal memos",
-    color: "text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/40",
+    description:
+      "Get market rates, generate counter-offers, and create deal memos",
+    color:
+      "text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/40",
     prompts: [
       "What's the going rate for macro influencers?",
       "Creator is asking 50K — generate a counter-offer",
@@ -107,8 +123,10 @@ const capabilities = [
   {
     icon: BarChart3,
     title: "Campaign Analytics",
-    description: "Track ROI, budget usage, content submissions, and performance",
-    color: "text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/40",
+    description:
+      "Track ROI, budget usage, content submissions, and performance",
+    color:
+      "text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/40",
     prompts: [
       "How are my active campaigns performing?",
       "What's the ROI on my last campaign?",
@@ -118,8 +136,10 @@ const capabilities = [
   {
     icon: Target,
     title: "Campaign Management",
-    description: "Create campaigns, generate briefs, assign discount codes, send gifts",
-    color: "text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-950/40",
+    description:
+      "Create campaigns, generate briefs, assign discount codes, send gifts",
+    color:
+      "text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-950/40",
     prompts: [
       "Create a new summer collection campaign",
       "Generate a content brief for @creator",
@@ -129,8 +149,10 @@ const capabilities = [
   {
     icon: TrendingUp,
     title: "Relationship Intelligence",
-    description: "Score creator loyalty, predict churn, find re-engagement opportunities",
-    color: "text-cyan-600 dark:text-cyan-400 bg-cyan-100 dark:bg-cyan-950/40",
+    description:
+      "Score creator loyalty, predict churn, find re-engagement opportunities",
+    color:
+      "text-cyan-600 dark:text-cyan-400 bg-cyan-100 dark:bg-cyan-950/40",
     prompts: [
       "Which creators are at risk of churning?",
       "Show me relationship health with @creator",
@@ -139,8 +161,21 @@ const capabilities = [
   },
 ];
 
+/* ── Page entry — wraps inner in HighlightFocusProvider ──── */
+
 export default function AgentPage() {
+  return (
+    <HighlightFocusProvider>
+      <AgentPageInner />
+    </HighlightFocusProvider>
+  );
+}
+
+/* ── Main page — has access to useHighlightFocus ────────── */
+
+function AgentPageInner() {
   const { pageContext } = usePageContext();
+  const { setHandleResolver, focusId } = useHighlightFocus();
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [input, setInput] = useState("");
@@ -151,23 +186,27 @@ export default function AgentPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
 
+  // Highlights panel state
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
+  const userClosedPanelRef = useRef(false);
+
   // Ref so the transport always reads the latest session ID at request time
   const sessionIdRef = useRef<string | null>(null);
+  // eslint-disable-next-line react-hooks/refs -- intentional: keeps ref synced so the transport body callback always sees the current session
   sessionIdRef.current = activeSessionId;
 
   const transport = useMemo(
     () =>
+      // eslint-disable-next-line react-hooks/refs -- ref is read at request time inside the body callback, not during render
       new DefaultChatTransport({
         api: "/api/agent/chat",
-        // body is Resolvable — a function is called at request time,
-        // so it always reads the latest sessionId from the ref
         body: () => ({
           pageContext: pageContext.path,
           pageData: pageContext.data,
           sessionId: sessionIdRef.current,
         }),
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [pageContext.path, pageContext.data]
   );
 
@@ -176,7 +215,64 @@ export default function AgentPage() {
   const isLoading = status === "streaming" || status === "submitted";
   const [historyLoaded, setHistoryLoaded] = useState(false);
 
-  // Load sessions on mount
+  /* ── Highlights derivation ─────────────────────────────── */
+
+  const highlights = useMemo(() => extractHighlights(messages), [messages]);
+  const highlightById = useMemo(
+    () => indexHighlights(highlights),
+    [highlights]
+  );
+
+  // Register handle resolver so <HandlePill> in markdown can deep-link.
+  useEffect(() => {
+    setHandleResolver((handle: string) => {
+      const h = findHighlightByHandle(highlights, handle);
+      return h?.id ?? null;
+    });
+    return () => setHandleResolver(null);
+  }, [highlights, setHandleResolver]);
+
+  // Auto-open panel when first highlight lands (unless user already closed it).
+  useEffect(() => {
+    if (highlights.length > 0 && !panelOpen && !userClosedPanelRef.current) {
+      setPanelOpen(true);
+    }
+  }, [highlights.length, panelOpen]);
+
+  // Clicking a breadcrumb in chat or an @handle focuses a highlight — make sure
+  // the panel is open so the flash is visible. On mobile we open the sheet
+  // instead of the desktop side rail.
+  useEffect(() => {
+    if (!focusId) return;
+    const isMobile =
+      typeof window !== "undefined" &&
+      !window.matchMedia("(min-width: 1024px)").matches;
+    if (isMobile) {
+      setMobileSheetOpen(true);
+    } else {
+      setPanelOpen(true);
+      userClosedPanelRef.current = false;
+    }
+  }, [focusId]);
+
+  // When the actions panel opens, collapse the sessions sidebar to give the
+  // chat column breathing room. The user can manually reopen it.
+  useEffect(() => {
+    if (panelOpen) setSidebarOpen(false);
+  }, [panelOpen]);
+
+  const closePanel = useCallback(() => {
+    setPanelOpen(false);
+    userClosedPanelRef.current = true;
+  }, []);
+
+  const openPanel = useCallback(() => {
+    setPanelOpen(true);
+    userClosedPanelRef.current = false;
+  }, []);
+
+  /* ── Session / chat plumbing (unchanged) ───────────────── */
+
   useEffect(() => {
     if (!sessionsLoaded) {
       loadSessions().then((s) => {
@@ -186,7 +282,6 @@ export default function AgentPage() {
     }
   }, [sessionsLoaded]);
 
-  // Load chat history when active session changes
   useEffect(() => {
     if (activeSessionId && !historyLoaded) {
       loadChatHistory(activeSessionId).then((history) => {
@@ -200,19 +295,16 @@ export default function AgentPage() {
     }
   }, [activeSessionId, historyLoaded, setMessages]);
 
-  // Auto-scroll on new messages
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
 
-  // Focus input on mount
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  // Cmd+K to focus input
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -229,6 +321,8 @@ export default function AgentPage() {
     setActiveSessionId(null);
     setMessages([]);
     setHistoryLoaded(false);
+    userClosedPanelRef.current = false;
+    setPanelOpen(false);
     inputRef.current?.focus();
   }, [setMessages]);
 
@@ -238,6 +332,7 @@ export default function AgentPage() {
       setActiveSessionId(session.id);
       setMessages([]);
       setHistoryLoaded(false);
+      userClosedPanelRef.current = false;
     },
     [activeSessionId, setMessages]
   );
@@ -258,7 +353,6 @@ export default function AgentPage() {
       const msg = text ?? input.trim();
       if (!msg || isLoading) return;
 
-      // Create session before first message so all messages share the same session
       if (!sessionIdRef.current) {
         const title = msg.length > 60 ? msg.slice(0, 57) + "..." : msg;
         const session = await createSession(title);
@@ -291,13 +385,14 @@ export default function AgentPage() {
   };
 
   const hasMessages = messages.length > 0;
+  const highlightCount = highlights.length;
 
   return (
     <div
       className="-mx-4 -mt-6 -mb-6 md:-mx-8 flex overflow-hidden"
       style={{ height: "calc(100vh - 3.5rem)" }}
     >
-      {/* Session sidebar */}
+      {/* ── Session sidebar ─────────────────────────────── */}
       {sidebarOpen && (
         <div className="w-64 shrink-0 border-r bg-muted/30 flex flex-col">
           <div className="flex items-center justify-between px-3 py-3 border-b">
@@ -327,7 +422,6 @@ export default function AgentPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            {/* New Chat item */}
             <button
               onClick={handleNewChat}
               className={cn(
@@ -339,7 +433,6 @@ export default function AgentPage() {
               <span className="truncate">New Chat</span>
             </button>
 
-            {/* Session list */}
             {sessions.map((session) => (
               <div
                 key={session.id}
@@ -380,27 +473,42 @@ export default function AgentPage() {
         </div>
       )}
 
-      {/* Main chat area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar with sidebar toggle */}
-        {!sidebarOpen && (
-          <div className="shrink-0 border-b px-4 py-2 flex items-center gap-2">
+      {/* ── Chat area (middle column) ───────────────────── */}
+      <div className="flex-1 flex flex-col min-w-0 relative">
+        {/* Top bar — controls for sidebars */}
+        <div className="shrink-0 border-b px-4 py-2 flex items-center gap-2">
+          {!sidebarOpen && (
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7"
               onClick={() => setSidebarOpen(true)}
-              title="Open sidebar"
+              title="Open sessions"
             >
               <PanelLeftOpen className="h-3.5 w-3.5" />
             </Button>
-            <span className="text-xs text-muted-foreground">
-              {activeSessionId
-                ? sessions.find((s) => s.id === activeSessionId)?.title || "Chat"
-                : "New Chat"}
-            </span>
-          </div>
-        )}
+          )}
+          <span className="text-xs text-muted-foreground flex-1 min-w-0 truncate">
+            {activeSessionId
+              ? sessions.find((s) => s.id === activeSessionId)?.title ||
+                "Chat"
+              : "New Chat"}
+          </span>
+          {/* Desktop: panel open/close */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 hidden lg:inline-flex"
+            onClick={panelOpen ? closePanel : openPanel}
+            title={panelOpen ? "Close actions" : "Open actions"}
+          >
+            {panelOpen ? (
+              <PanelRightClose className="h-3.5 w-3.5" />
+            ) : (
+              <PanelRightOpen className="h-3.5 w-3.5" />
+            )}
+          </Button>
+        </div>
 
         {/* Messages area */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
@@ -409,10 +517,13 @@ export default function AgentPage() {
           ) : (
             <div className="mx-auto max-w-3xl px-6 py-6 space-y-6">
               {messages.map((message) => (
-                <MessageRow key={message.id} message={message} />
+                <MessageRow
+                  key={message.id}
+                  message={message}
+                  highlightById={highlightById}
+                />
               ))}
 
-              {/* Show typing indicator only when no streaming text has appeared yet */}
               {isLoading &&
                 !messages.some(
                   (m) =>
@@ -427,7 +538,7 @@ export default function AgentPage() {
           )}
         </div>
 
-        {/* Input area — pinned to bottom */}
+        {/* Input area */}
         <div className="shrink-0 border-t bg-background/80 backdrop-blur-sm">
           <div className="mx-auto max-w-3xl px-6 py-4">
             <div className="relative flex items-end gap-3 rounded-2xl border bg-background shadow-sm focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50 transition-all px-4 py-3">
@@ -461,7 +572,40 @@ export default function AgentPage() {
             </p>
           </div>
         </div>
+
+        {/* Mobile floating actions button */}
+        {highlightCount > 0 && (
+          <button
+            onClick={() => setMobileSheetOpen(true)}
+            className="lg:hidden absolute bottom-24 right-4 flex items-center gap-2 rounded-full border bg-background shadow-lg px-3.5 py-2 text-xs font-medium hover:bg-muted transition-colors z-10"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            {highlightCount} action{highlightCount === 1 ? "" : "s"}
+          </button>
+        )}
       </div>
+
+      {/* ── Highlights panel (desktop right rail) ───────── */}
+      {panelOpen && (
+        <div className="hidden lg:flex w-[380px] shrink-0 border-l flex-col">
+          <HighlightsPanel highlights={highlights} onClose={closePanel} />
+        </div>
+      )}
+
+      {/* ── Highlights bottom sheet (mobile) ────────────── */}
+      <Sheet open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
+        <SheetContent
+          side="bottom"
+          showCloseButton={false}
+          className="h-[70vh] p-0 flex flex-col rounded-t-xl"
+        >
+          <SheetTitle className="sr-only">Actions</SheetTitle>
+          <HighlightsPanel
+            highlights={highlights}
+            onClose={() => setMobileSheetOpen(false)}
+          />
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -490,7 +634,6 @@ function EmptyState({ onSend }: { onSend: (text: string) => void }) {
 
   return (
     <div className="flex flex-col items-center px-6 pt-12 pb-6 max-w-4xl mx-auto">
-      {/* Hero */}
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 mb-5">
         <Sparkles className="h-8 w-8 text-primary" />
       </div>
@@ -500,7 +643,6 @@ function EmptyState({ onSend }: { onSend: (text: string) => void }) {
         draft outreach, negotiate deals, manage campaigns, and track performance.
       </p>
 
-      {/* Capability grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full mb-8">
         {capabilities.map((cap, idx) => {
           const Icon = cap.icon;
@@ -510,7 +652,9 @@ function EmptyState({ onSend }: { onSend: (text: string) => void }) {
               key={cap.title}
               className={cn(
                 "group rounded-xl border p-4 transition-all cursor-pointer hover:shadow-md",
-                isExpanded ? "ring-2 ring-primary/20 shadow-md" : "hover:border-primary/30"
+                isExpanded
+                  ? "ring-2 ring-primary/20 shadow-md"
+                  : "hover:border-primary/30"
               )}
               onClick={() => setExpandedIdx(isExpanded ? null : idx)}
             >
@@ -521,7 +665,7 @@ function EmptyState({ onSend }: { onSend: (text: string) => void }) {
                     cap.color
                   )}
                 >
-                  <Icon className="h-4.5 w-4.5" />
+                  <Icon className="h-4 w-4" />
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-sm font-semibold">{cap.title}</h3>
@@ -531,7 +675,6 @@ function EmptyState({ onSend }: { onSend: (text: string) => void }) {
                 </div>
               </div>
 
-              {/* Expandable prompts */}
               {isExpanded && (
                 <div className="mt-3 pt-3 border-t space-y-1.5">
                   <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
@@ -559,7 +702,6 @@ function EmptyState({ onSend }: { onSend: (text: string) => void }) {
         })}
       </div>
 
-      {/* Quick start */}
       <div className="w-full max-w-2xl">
         <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider text-center mb-3">
           Quick start
@@ -609,7 +751,6 @@ function TypingIndicator() {
 function ToolCallIndicator({ toolName }: { toolName: string }) {
   const info = TOOL_LABELS[toolName];
   const label = info?.label || toolName.replace(/_/g, " ");
-
   return (
     <div className="flex items-center gap-2 rounded-lg border border-primary/10 bg-primary/5 px-3 py-2 text-xs w-fit">
       <Loader2 className="h-3 w-3 animate-spin text-primary" />
@@ -618,9 +759,15 @@ function ToolCallIndicator({ toolName }: { toolName: string }) {
   );
 }
 
-/* ── Message row (non-bubble layout for assistant) ──────── */
+/* ── Message row ────────────────────────────────────────── */
 
-function MessageRow({ message }: { message: UIMessage }) {
+function MessageRow({
+  message,
+  highlightById,
+}: {
+  message: UIMessage;
+  highlightById: Map<string, Highlight>;
+}) {
   const isUser = message.role === "user";
 
   if (isUser) {
@@ -631,19 +778,18 @@ function MessageRow({ message }: { message: UIMessage }) {
             <User className="h-4 w-4" />
           </div>
           <div className="rounded-2xl rounded-tr-md bg-primary text-primary-foreground px-4 py-2.5 text-sm">
-            <div className="whitespace-pre-wrap break-words">{
-              message.parts
+            <div className="whitespace-pre-wrap break-words">
+              {message.parts
                 .filter((p) => p.type === "text")
                 .map((p) => (p as { type: "text"; text: string }).text)
-                .join("")
-            }</div>
+                .join("")}
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
-  // Assistant message — open layout, no constraining bubble
   return (
     <div className="flex items-start gap-3">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/5 mt-0.5">
@@ -659,27 +805,73 @@ function MessageRow({ message }: { message: UIMessage }) {
             );
           }
 
-          // Tool invocation — show call state or result
           const toolPart = part as unknown as Record<string, unknown>;
           if (toolPart.toolCallId) {
             const toolState = toolPart.state as string;
-            const toolName = toolPart.toolName as string;
+            const typeStr = typeof toolPart.type === "string" ? toolPart.type : "";
+            const toolName =
+              (toolPart.toolName as string | undefined) ??
+              (typeStr.startsWith("tool-") ? typeStr.slice(5) : "");
+            const toolCallId = String(toolPart.toolCallId);
 
-            // Tool is currently executing
-            if (toolState === "call" || toolState === "partial-call") {
+            // In-flight states (Vercel AI SDK v6 + legacy aliases)
+            const isInFlight =
+              toolState === "input-streaming" ||
+              toolState === "input-available" ||
+              toolState === "approval-requested" ||
+              toolState === "call" ||
+              toolState === "partial-call";
+            if (isInFlight) {
               return (
-                <ToolCallIndicator key={String(toolPart.toolCallId)} toolName={toolName} />
+                <ToolCallIndicator
+                  key={toolCallId}
+                  toolName={toolName}
+                />
               );
             }
 
-            // Tool has completed — show rich result card
-            if (toolState === "result" || toolState === "output") {
+            // Errored tool — surface a subdued error pill
+            if (toolState === "output-error" || toolState === "output-denied") {
+              const errorText = String(toolPart.errorText ?? "Tool failed");
               return (
-                <ToolResultCard
-                  key={String(toolPart.toolCallId)}
-                  tool={toolPart}
-                  compact={false}
-                />
+                <div
+                  key={toolCallId}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/20 px-2.5 py-1.5 text-xs text-red-600 dark:text-red-400"
+                >
+                  <Sparkles className="h-3 w-3" />
+                  <span>
+                    {toolName.replace(/_/g, " ")} — {errorText}
+                  </span>
+                </div>
+              );
+            }
+
+            // Completed
+            const isComplete =
+              toolState === "output-available" ||
+              toolState === "result" ||
+              toolState === "output";
+            if (isComplete) {
+              const highlight = highlightById.get(toolCallId);
+              if (highlight) {
+                return (
+                  <HighlightPill
+                    key={toolCallId}
+                    id={highlight.id}
+                    kind={highlight.kind}
+                    title={highlight.title}
+                    subtitle={highlight.subtitle}
+                  />
+                );
+              }
+              return (
+                <div
+                  key={toolCallId}
+                  className="inline-flex items-center gap-1.5 rounded-lg border bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground"
+                >
+                  <Sparkles className="h-3 w-3" />
+                  <span>{toolName.replace(/_/g, " ")}</span>
+                </div>
               );
             }
           }
