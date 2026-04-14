@@ -32,7 +32,6 @@ import type { Highlight, HighlightKind } from "@/lib/agent/highlights";
 import { useHighlightFocus } from "./highlight-focus-context";
 import {
   CreatorSearchCard,
-  OutreachDraftCard,
   RateBenchmarkCard,
   BudgetCard,
   DealMemoCard,
@@ -101,7 +100,7 @@ function HighlightDetail({ highlight }: { highlight: Highlight }) {
         return <CampaignOverviewCard result={out} compact={false} />;
       break;
     case "outreach_drafted":
-      if (out.draft_id) return <OutreachDraftCard result={out} />;
+      if (out.draft_id) return <OutreachDraftDetail output={out} />;
       break;
     case "approval_pending":
       return <ApprovalActionDetail output={out} />;
@@ -237,6 +236,109 @@ function ApprovalActionDetail({
           className="inline-flex items-center gap-1 rounded-md border bg-background/80 px-2.5 py-1 text-xs text-amber-700 dark:text-amber-400 hover:bg-background transition-colors"
         >
           View in Approvals
+          <ExternalLink className="h-3 w-3" />
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/* ── Outreach draft with approve & send ─────────────────── */
+
+function OutreachDraftDetail({
+  output,
+}: {
+  output: Record<string, unknown>;
+}) {
+  const draftId =
+    typeof output.draft_id === "string" ? output.draft_id : null;
+  const handle =
+    typeof output.creator_handle === "string"
+      ? output.creator_handle
+      : typeof output.handle === "string"
+        ? output.handle
+        : null;
+  const email =
+    typeof output.creator_email === "string" ? output.creator_email : null;
+  const subject =
+    typeof output.subject === "string" ? output.subject : null;
+  const body =
+    typeof output.body === "string" ? output.body : null;
+
+  const [state, setState] = useState<
+    "draft" | "sending" | "sent" | "error"
+  >("draft");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const onApproveAndSend = async () => {
+    if (!draftId || state === "sending" || state === "sent") return;
+    setState("sending");
+    setErrorMsg(null);
+    try {
+      const res = await fetch("/api/agent/outreach/approve-send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draft_id: draftId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.error) {
+        throw new Error(data?.error || `Failed (${res.status})`);
+      }
+      setState("sent");
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Failed to send");
+      setState("error");
+    }
+  };
+
+  return (
+    <div className="rounded-lg border bg-background p-3 text-xs space-y-2">
+      <div className="space-y-1">
+        {handle && (
+          <p className="text-muted-foreground">
+            To: <span className="font-mono font-medium text-foreground">@{handle}</span>
+            {email && <span className="ml-1 text-muted-foreground">({email})</span>}
+          </p>
+        )}
+        {subject && <p className="font-semibold">{subject}</p>}
+        {body && (
+          <p className="text-muted-foreground leading-relaxed line-clamp-4 whitespace-pre-wrap">
+            {body.substring(0, 300)}
+            {body.length > 300 && "…"}
+          </p>
+        )}
+      </div>
+      {state === "error" && errorMsg && (
+        <p className="text-[11px] text-red-600 dark:text-red-400">
+          {errorMsg}
+        </p>
+      )}
+      <div className="flex items-center gap-2 pt-1">
+        <Button
+          size="sm"
+          className="h-7 px-2.5 text-xs"
+          onClick={onApproveAndSend}
+          disabled={!draftId || state === "sending" || state === "sent"}
+        >
+          {state === "sending" ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" /> Sending…
+            </>
+          ) : state === "sent" ? (
+            <>
+              <Check className="h-3 w-3" /> Sent
+            </>
+          ) : (
+            <>
+              <Mail className="h-3 w-3" /> Approve & Send
+            </>
+          )}
+        </Button>
+        <Link
+          href="/outreach"
+          className="inline-flex items-center gap-1 rounded-md border bg-background/80 px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-background transition-colors"
+        >
+          View in Outreach
           <ExternalLink className="h-3 w-3" />
         </Link>
       </div>
