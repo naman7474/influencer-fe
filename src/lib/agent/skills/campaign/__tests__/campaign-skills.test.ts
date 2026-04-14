@@ -108,10 +108,36 @@ describe("campaign-builder", () => {
     expect(result.error).toContain("c2");
   });
 
-  it("submits approval request for valid campaign", async () => {
-    const supabase = createApprovalAwareSupabase({
-      mv_creator_leaderboard: [],
-    });
+  it("creates draft campaign row and returns real campaign_id", async () => {
+    const insertSpy = vi.fn();
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "campaigns") {
+          // For the campaign insert
+          const insertBuilder = {
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockReturnValue({
+                then: (resolve: (v: unknown) => void) =>
+                  resolve({ data: { id: "campaign-real-id" }, error: null }),
+              }),
+            }),
+          };
+          insertSpy.mockReturnValue(insertBuilder);
+          return { insert: insertSpy };
+        }
+        if (table === "campaign_creators") {
+          return { insert: vi.fn().mockReturnValue({ then: (r: (v: unknown) => void) => r({ error: null }) }) };
+        }
+        // approval_queue + notifications
+        if (table === "approval_queue" || table === "notifications") {
+          const builder = mockQueryBuilder([{ id: "approval-1" }]);
+          builder.insert = vi.fn().mockReturnValue(mockQueryBuilder([{ id: "approval-1" }]));
+          return builder;
+        }
+        return mockQueryBuilder([]);
+      }),
+    } as unknown as SupabaseParam;
+
     const t = campaignBuilderTool(brandId, supabase);
     const result = (await t.execute(
       {
@@ -123,10 +149,77 @@ describe("campaign-builder", () => {
         discount_percent: 15,
       },
       execOpts
-    )) as { campaign_preview: Record<string, unknown> };
+    )) as { campaign_id: string; campaign_preview: Record<string, unknown>; approval_id: string };
+
+    // Must return a real campaign_id for downstream tools
+    expect(result.campaign_id).toBe("campaign-real-id");
+    // Must still return the preview
     expect(result.campaign_preview).toBeDefined();
     expect(result.campaign_preview.name).toBe("Summer Sale");
-    expect(result.campaign_preview.budget).toBe(100000);
+    // Must still create an approval entry
+    expect(result.approval_id).toBe("approval-1");
+    // The campaign insert should use status: "draft"
+    expect(insertSpy).toHaveBeenCalledTimes(1);
+    const insertedRow = insertSpy.mock.calls[0][0];
+    expect(insertedRow.status).toBe("draft");
+    expect(insertedRow.name).toBe("Summer Sale");
+  });
+
+  it("adds pre-selected creators to campaign_creators when campaign is created", async () => {
+    const ccInsertSpy = vi.fn().mockReturnValue({
+      then: (r: (v: unknown) => void) => r({ error: null }),
+    });
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "mv_creator_leaderboard") {
+          return mockQueryBuilder([
+            { creator_id: "c1", handle: "@c1" },
+            { creator_id: "c2", handle: "@c2" },
+          ]);
+        }
+        if (table === "campaigns") {
+          return {
+            insert: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockReturnValue({
+                  then: (resolve: (v: unknown) => void) =>
+                    resolve({ data: { id: "camp-new" }, error: null }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === "campaign_creators") {
+          return { insert: ccInsertSpy };
+        }
+        if (table === "approval_queue" || table === "notifications") {
+          const builder = mockQueryBuilder([{ id: "approval-1" }]);
+          builder.insert = vi.fn().mockReturnValue(mockQueryBuilder([{ id: "approval-1" }]));
+          return builder;
+        }
+        return mockQueryBuilder([]);
+      }),
+    } as unknown as SupabaseParam;
+
+    const t = campaignBuilderTool(brandId, supabase);
+    const result = (await t.execute(
+      {
+        name: "Creator Campaign",
+        goal: "Awareness",
+        creator_ids: ["c1", "c2"],
+        discount_percent: 15,
+      },
+      execOpts
+    )) as { campaign_id: string };
+
+    expect(result.campaign_id).toBe("camp-new");
+    // Should insert campaign_creators rows
+    expect(ccInsertSpy).toHaveBeenCalledTimes(1);
+    const ccRows = ccInsertSpy.mock.calls[0][0] as Array<Record<string, unknown>>;
+    expect(ccRows).toHaveLength(2);
+    expect(ccRows[0].campaign_id).toBe("camp-new");
+    expect(ccRows[0].status).toBe("shortlisted");
   });
 });
 

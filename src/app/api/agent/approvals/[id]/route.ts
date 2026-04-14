@@ -115,60 +115,79 @@ export async function POST(
         });
       }
 
-      // Create campaign
+      // Activate campaign (draft → active)
+      // campaign_builder already creates the row as "draft"; approval activates it.
       if (approval.action_type === "create_campaign") {
-        // Map free-text goal to campaign_goal enum
-        const goalText = ((payload.goal as string) || "").toLowerCase();
-        const goalEnum = goalText.includes("ugc") || goalText.includes("content generation")
-          ? "ugc_generation"
-          : goalText.includes("conversion") || goalText.includes("sale") || goalText.includes("revenue")
-            ? "conversion"
-            : "awareness";
+        const campaignId = (payload.campaign_id as string) || approval.campaign_id;
 
-        const { data: newCampaign, error: campaignError } = await supabase
-          .from("campaigns")
-          .insert({
-            brand_id: brand.id,
-            name: payload.name,
-            goal: goalEnum,
-            description: payload.goal || null,
-            total_budget: payload.budget ?? null,
-            start_date: payload.start_date ?? null,
-            end_date: payload.end_date ?? null,
-            default_discount_percentage: payload.discount_percent ?? null,
-            brief_requirements: payload.brief_requirements ?? [],
-            status: "active",
-          } as never)
-          .select("id")
-          .single();
+        if (campaignId) {
+          // Activate the existing draft campaign
+          const { error: updateError } = await supabase
+            .from("campaigns")
+            .update({ status: "active", updated_at: new Date().toISOString() } as never)
+            .eq("id", campaignId)
+            .eq("brand_id", brand.id);
 
-        if (campaignError) {
-          console.error("[approvals] Campaign insert failed:", campaignError);
-          return NextResponse.json(
-            { error: "Failed to create campaign: " + campaignError.message },
-            { status: 500 }
-          );
-        }
+          if (updateError) {
+            console.error("[approvals] Campaign activation failed:", updateError);
+            return NextResponse.json(
+              { error: "Failed to activate campaign: " + updateError.message },
+              { status: 500 }
+            );
+          }
+        } else {
+          // Legacy fallback: older approval entries that don't have campaign_id
+          // (before campaign_builder was updated to create draft rows).
+          const goalText = ((payload.goal as string) || "").toLowerCase();
+          const goalEnum = goalText.includes("ugc") || goalText.includes("content generation")
+            ? "ugc_generation"
+            : goalText.includes("conversion") || goalText.includes("sale") || goalText.includes("revenue")
+              ? "conversion"
+              : "awareness";
 
-        // Add pre-selected creators if any
-        const creatorIds = (payload.creator_ids as string[]) || [];
-        if (newCampaign && creatorIds.length > 0) {
-          const ccInserts = creatorIds.map((cid) => ({
-            campaign_id: (newCampaign as Record<string, unknown>).id,
-            creator_id: cid,
-            brand_id: brand.id,
-            status: "shortlisted",
-          }));
-          await supabase.from("campaign_creators").insert(ccInserts as never);
+          const { data: newCampaign, error: campaignError } = await supabase
+            .from("campaigns")
+            .insert({
+              brand_id: brand.id,
+              name: payload.name,
+              goal: goalEnum,
+              description: payload.goal || null,
+              total_budget: payload.budget ?? null,
+              start_date: payload.start_date ?? null,
+              end_date: payload.end_date ?? null,
+              default_discount_percentage: payload.discount_percent ?? null,
+              brief_requirements: payload.brief_requirements ?? [],
+              status: "active",
+            } as never)
+            .select("id")
+            .single();
+
+          if (campaignError) {
+            console.error("[approvals] Campaign insert failed:", campaignError);
+            return NextResponse.json(
+              { error: "Failed to create campaign: " + campaignError.message },
+              { status: 500 }
+            );
+          }
+
+          // Add pre-selected creators if any (legacy path)
+          const creatorIds = (payload.creator_ids as string[]) || [];
+          if (newCampaign && creatorIds.length > 0) {
+            const ccInserts = creatorIds.map((cid) => ({
+              campaign_id: (newCampaign as Record<string, unknown>).id,
+              creator_id: cid,
+              brand_id: brand.id,
+              status: "shortlisted",
+            }));
+            await supabase.from("campaign_creators").insert(ccInserts as never);
+          }
         }
 
         await writeEpisode({
           brandId: brand.id,
           type: "campaign_created",
-          summary: `Campaign "${payload.name}" created via agent`,
-          campaignId: newCampaign
-            ? ((newCampaign as Record<string, unknown>).id as string)
-            : undefined,
+          summary: `Campaign "${payload.name}" activated via agent`,
+          campaignId: campaignId || undefined,
           outcome: "positive",
           supabase,
         });
@@ -176,9 +195,7 @@ export async function POST(
         return NextResponse.json({
           success: true,
           action: "approved",
-          campaign_id: newCampaign
-            ? (newCampaign as Record<string, unknown>).id
-            : null,
+          campaign_id: campaignId || null,
         });
       }
 

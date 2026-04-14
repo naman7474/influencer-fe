@@ -73,8 +73,9 @@ export function outreachDrafterTool(
         };
       }
 
-      // 3. Load campaign if specified
+      // 3. Load campaign if specified — validate it exists to avoid FK violation
       let campaign: Record<string, unknown> | null = null;
+      let validCampaignId: string | null = null;
       if (params.campaign_id) {
         const { data } = await supabase
           .from("campaigns")
@@ -83,6 +84,7 @@ export function outreachDrafterTool(
           .eq("brand_id", brandId)
           .single();
         campaign = data as Record<string, unknown> | null;
+        validCampaignId = campaign ? (campaign.id as string) : null;
       }
 
       // 4. Load caption intelligence for personalization
@@ -200,7 +202,7 @@ export function outreachDrafterTool(
         .insert({
           brand_id: brandId,
           creator_id: params.creator_id,
-          campaign_id: params.campaign_id || null,
+          campaign_id: validCampaignId,
           template_id: params.template_id || template?.id || null,
           channel: "email",
           subject,

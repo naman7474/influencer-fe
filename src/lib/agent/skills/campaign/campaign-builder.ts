@@ -76,29 +76,80 @@ export function campaignBuilderTool(brandId: string, supabase: SupabaseClient) {
         }
       }
 
-      // Submit for approval (high-risk action)
+      // Map free-text goal to campaign_goal enum
+      const goalText = (params.goal || "").toLowerCase();
+      const goalEnum = goalText.includes("ugc") || goalText.includes("content generation")
+        ? "ugc_generation"
+        : goalText.includes("conversion") || goalText.includes("sale") || goalText.includes("revenue")
+          ? "conversion"
+          : "awareness";
+
+      // Create the campaign row immediately as "draft" so downstream tools
+      // (outreach_drafter, brief_generator, etc.) get a real campaign_id.
+      // Approval controls activation (draft → active), not creation.
+      const { data: newCampaignRaw, error: campaignError } = await supabase
+        .from("campaigns")
+        .insert({
+          brand_id: brandId,
+          name: params.name,
+          goal: goalEnum,
+          description: params.goal || null,
+          total_budget: params.budget ?? null,
+          start_date: params.start_date ?? null,
+          end_date: params.end_date ?? null,
+          default_discount_percentage: params.discount_percent ?? null,
+          brief_requirements: params.brief_requirements ?? [],
+          status: "draft",
+        } as never)
+        .select("id")
+        .single();
+      const newCampaign = newCampaignRaw as { id: string } | null;
+
+      if (campaignError || !newCampaign) {
+        console.error("[campaign_builder] Campaign insert failed:", campaignError);
+        return { error: `Failed to create campaign: ${campaignError?.message ?? "unknown error"}` };
+      }
+
+      const campaignId = newCampaign.id;
+
+      // Add pre-selected creators to campaign_creators
+      if (payload.creator_ids.length > 0) {
+        const ccInserts = payload.creator_ids.map((cid) => ({
+          campaign_id: campaignId,
+          creator_id: cid,
+          brand_id: brandId,
+          status: "shortlisted",
+        }));
+        await supabase.from("campaign_creators").insert(ccInserts as never);
+      }
+
+      // Submit for approval to activate the campaign (draft → active)
       console.log("[campaign_builder] Submitting for approval, brandId:", brandId);
       const result = await createApprovalRequest(supabase, {
         brandId,
         actionType: "create_campaign",
-        title: `Create campaign: ${params.name}`,
-        description: `New campaign "${params.name}" with goal: ${params.goal}. Budget: ${params.budget ? `₹${params.budget.toLocaleString("en-IN")}` : "not set"}. ${payload.creator_ids.length} creators pre-selected.`,
+        title: `Activate campaign: ${params.name}`,
+        description: `Campaign "${params.name}" with goal: ${params.goal}. Budget: ${params.budget ? `₹${params.budget.toLocaleString("en-IN")}` : "not set"}. ${payload.creator_ids.length} creators pre-selected.`,
         reasoning: `User requested campaign creation with the following brief: ${params.goal}`,
-        payload,
-        campaignId: undefined,
+        payload: { ...payload, campaign_id: campaignId },
+        campaignId,
         creatorId: undefined,
         messageId: undefined,
       });
 
-      // If approval creation failed, return error without campaign_preview
+      // If approval creation failed, campaign still exists as draft
       if ("error" in result) {
         console.error("[campaign_builder] Approval creation failed:", result.error);
-        return result;
+        return {
+          ...result,
+          campaign_id: campaignId,
+        };
       }
       console.log("[campaign_builder] Approval created successfully");
 
       return {
         ...result,
+        campaign_id: campaignId,
         campaign_preview: {
           name: params.name,
           goal: params.goal,

@@ -87,6 +87,14 @@ const KIND_ACCENT: Record<HighlightKind, string> = {
 
 function HighlightDetail({ highlight }: { highlight: Highlight }) {
   const out = highlight.toolOutput;
+
+  // If the tool returned an error, show it immediately regardless of kind.
+  // This catches cases where e.g. outreach_drafter returns { error: "..." }
+  // without draft_id, and the kind-specific guard would skip rendering.
+  if (typeof out.error === "string") {
+    return <ToolErrorDetail error={out.error} toolName={highlight.toolName} />;
+  }
+
   switch (highlight.kind) {
     case "creators_found":
       if (out.results) return <CreatorSearchCard result={out} compact={false} />;
@@ -143,6 +151,27 @@ function HighlightDetail({ highlight }: { highlight: Highlight }) {
     );
   }
   return null;
+}
+
+/* ── Tool error display ────────────────────────────────────── */
+
+function ToolErrorDetail({
+  error,
+  toolName,
+}: {
+  error: string;
+  toolName: string;
+}) {
+  return (
+    <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/20 p-3 text-xs space-y-1">
+      <p className="font-semibold text-red-700 dark:text-red-400">
+        {toolName.replace(/_/g, " ")} failed
+      </p>
+      <p className="text-red-600/80 dark:text-red-400/80 leading-relaxed">
+        {error}
+      </p>
+    </div>
+  );
 }
 
 /* ── Approval action card with inline approve + deep-link ── */
