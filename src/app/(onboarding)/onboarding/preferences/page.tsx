@@ -256,18 +256,22 @@ export default function PreferencesPage() {
       }
 
       // Fire-and-forget: kick off initial data sync in the background.
-      // User is redirected to dashboard immediately — these run async.
+      // Then route to the processing page — it polls ig-analyze status
+      // and blocks the dashboard reveal until matches are ready.
       const brand = updatedBrand as { id: string; shopify_connected: boolean } | null;
       if (brand) {
         // Sync Shopify products if connected
         if (brand.shopify_connected) {
           fetch(`/api/brands/${brand.id}/products`, { method: "POST" }).catch(() => {});
         }
-        // Compute initial creator-brand matches
-        fetch("/api/matching/compute", { method: "POST" }).catch(() => {});
+        // Enqueue the IG-analysis pipeline (brand scrape → collaborator fanout
+        // → match recompute). The processing page polls its status endpoint.
+        fetch(`/api/brands/${brand.id}/ig-analyze`, { method: "POST" }).catch(() => {});
       }
 
-      router.push("/dashboard");
+      router.push(
+        brand ? `/processing/${brand.id}` : "/dashboard"
+      );
     } catch (err) {
       console.error("Error saving preferences:", err);
       setSaving(false);

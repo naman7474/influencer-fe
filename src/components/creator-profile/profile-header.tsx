@@ -11,6 +11,7 @@ import {
   UserPlus,
   Bookmark,
   Mail,
+  AlertTriangle,
 } from "lucide-react";
 
 import type {
@@ -328,7 +329,7 @@ export function ProfileHeader({ creator, scores, match }: ProfileHeaderProps) {
               <ScoreChip label="Content Style" value={match.content_style_score} />
             )}
             {match.brand_safety_score != null && (
-              <ScoreChip label="Brand Safety" value={match.brand_safety_score} />
+              <BrandSafetyChip value={match.brand_safety_score} />
             )}
             {match.price_tier_score != null && (
               <ScoreChip label="Price Tier" value={match.price_tier_score} />
@@ -376,6 +377,30 @@ function ScoreChip({ label, value }: { label: string; value: number }) {
     <span className="inline-flex items-center gap-1.5 rounded-full bg-background px-2.5 py-1 text-xs ring-1 ring-foreground/10">
       <span className="text-muted-foreground">{label}</span>
       <span className="font-semibold text-foreground">{value}%</span>
+    </span>
+  );
+}
+
+function BrandSafetyChip({ value }: { value: number }) {
+  // value is 0–1 (stored as 3 decimal places)
+  const pct = Math.round(value * 100);
+  const isHigh = value >= 0.7;
+  const isLow = value < 0.3;
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs ring-1",
+        isHigh
+          ? "bg-green-100 text-green-800 ring-green-200 dark:bg-green-900/30 dark:text-green-400 dark:ring-green-800"
+          : isLow
+            ? "bg-red-100 text-red-800 ring-red-200 dark:bg-red-900/30 dark:text-red-400 dark:ring-red-800"
+            : "bg-amber-100 text-amber-800 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-800"
+      )}
+    >
+      {isLow && <AlertTriangle className="h-3 w-3" />}
+      <span className="opacity-80">Brand Safety</span>
+      <span className="font-semibold">{pct}%</span>
     </span>
   );
 }

@@ -19,10 +19,17 @@ import {
   type IndiaZone,
   ZONE_LABELS,
 } from "@/lib/geo/india";
+import {
+  computeBrandSafety,
+  type CaptionIntelForSafety,
+  type AudienceIntelForSafety,
+  type CreatorScoresForSafety,
+  type BrandSafetyConfig,
+} from "./brand-safety";
 
 // ── Constants ─────────────────────────────────────────────────────────
 
-const ALGORITHM_VERSION = "2.0.0";
+const ALGORITHM_VERSION = "3.1.0";
 
 export const NICHE_ADJACENCY: Record<string, string[]> = {
   beauty: ["skincare", "fashion", "lifestyle"],
@@ -43,13 +50,28 @@ export const TIER_RATES: Record<CreatorTier, [number, number]> = {
   mega: [500000, 2000000],
 };
 
-/** Weights for composite score */
+/** Weights for composite score (used when brand has NO IG analysis). */
 const WEIGHTS = {
   niche_fit: 0.3,
   audience_geo: 0.25,
   budget_fit: 0.15,
   content_format: 0.15,
   engagement_quality: 0.15,
+} as const;
+
+/**
+ * Weights used when the brand has completed the IG analysis pipeline.
+ * Shifts weight from coarse niche_fit to semantic + past-collab signals
+ * which carry finer-grained DNA than the 10-category brand taxonomy.
+ */
+const WEIGHTS_WITH_IG = {
+  niche_fit: 0.15,
+  semantic_similarity: 0.2,
+  past_collab_similarity: 0.15,
+  audience_geo: 0.2,
+  budget_fit: 0.1,
+  content_format: 0.1,
+  engagement_quality: 0.1,
 } as const;
 
 // ── Types for internal use ────────────────────────────────────────────
@@ -407,6 +429,96 @@ export function computeCompetitorBonus(
   return 1.0;
 }
 
+// ── IG-signal sub-scores (active when brand has content_embedding) ────
+
+/** Cosine similarity between two equal-length vectors. Returns 0 if either is missing. */
+export function cosineSimilarity(
+  a: number[] | null | undefined,
+  b: number[] | null | undefined
+): number {
+  if (!a || !b || a.length === 0 || a.length !== b.length) return 0;
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  if (na === 0 || nb === 0) return 0;
+  // cosine ∈ [-1, 1]; shift to [0, 1] so it combines cleanly with other sub-scores.
+  const raw = dot / (Math.sqrt(na) * Math.sqrt(nb));
+  return Math.max(0, Math.min(1, (raw + 1) / 2));
+}
+
+/**
+ * Semantic similarity between the brand's content fingerprint and the
+ * creator's. Catches theme-level matches that the 10-label niche_fit misses
+ * (e.g. "K-beauty routines" vs "Korean skincare ingredients").
+ */
+export function computeSemanticSimilarity(
+  brandEmbedding: number[] | null,
+  creatorEmbedding: number[] | null
+): number {
+  return cosineSimilarity(brandEmbedding, creatorEmbedding);
+}
+
+/**
+ * Max cosine similarity between the creator and any of the brand's past
+ * collaborators (with known embeddings). Encodes "find more creators like
+ * the ones this brand has already worked with successfully."
+ */
+export function computePastCollabSimilarity(
+  creatorEmbedding: number[] | null,
+  pastCollaboratorEmbeddings: (number[] | null)[]
+): number {
+  if (!creatorEmbedding || !pastCollaboratorEmbeddings.length) return 0;
+  let best = 0;
+  for (const emb of pastCollaboratorEmbeddings) {
+    if (!emb) continue;
+    const sim = cosineSimilarity(creatorEmbedding, emb);
+    if (sim > best) best = sim;
+  }
+  return best;
+}
+
+/**
+ * Jaccard overlap between the brand's recurring_topics and the creator's.
+ * Returned as a multiplicative bonus in [1.0, 1.10]. Topics are fine-grained
+ * strings ("morning routines", "protein recipes") — orthogonal to niche_fit.
+ */
+export function computeThemeOverlapBonus(
+  brandTopics: string[] | null | undefined,
+  creatorTopics: string[] | null | undefined
+): number {
+  if (!brandTopics?.length || !creatorTopics?.length) return 1.0;
+  const bset = new Set(brandTopics.map((t) => t.toLowerCase().trim()));
+  const cset = new Set(creatorTopics.map((t) => t.toLowerCase().trim()));
+  let intersection = 0;
+  for (const t of cset) if (bset.has(t)) intersection++;
+  const union = new Set([...bset, ...cset]).size;
+  if (union === 0) return 1.0;
+  const jaccard = intersection / union;
+  return 1.0 + jaccard * 0.1; // up to +10%
+}
+
+/**
+ * Collaboration-network proximity. If the creator's handle appears in the
+ * brand's ig_collaborators list (past collaborators directly tagged from
+ * the brand's own IG + manual entries), give a flat 1.15× bonus.
+ */
+export function computeCollabNetworkBonus(
+  creatorHandle: string | null | undefined,
+  brandCollaborators: string[] | null | undefined
+): number {
+  if (!creatorHandle || !brandCollaborators?.length) return 1.0;
+  const ch = creatorHandle.toLowerCase().trim().replace(/^@/, "");
+  for (const h of brandCollaborators) {
+    if (h.toLowerCase().trim().replace(/^@/, "") === ch) return 1.15;
+  }
+  return 1.0;
+}
+
 // ── Match reasoning generator ─────────────────────────────────────────
 
 function generateMatchReasoning(
@@ -415,7 +527,7 @@ function generateMatchReasoning(
   budgetFit: number,
   formatFit: number,
   engagementQuality: number,
-  authenticityMod: number,
+  brandSafety: number,
   competitorBonus: number,
   finalScore: number
 ): string {
@@ -445,7 +557,11 @@ function generateMatchReasoning(
   else if (engagementQuality >= 0.4)
     reasons.push("Moderate engagement quality");
 
-  if (authenticityMod < 1.0) reasons.push("Reduced by low authenticity score");
+  if (brandSafety >= 0.8) reasons.push("High brand safety alignment");
+  else if (brandSafety >= 0.5) reasons.push("Moderate brand safety");
+  else if (brandSafety >= 0.3)
+    reasons.push("Low brand safety — review recommended");
+  else reasons.push("Brand safety concern — not recommended");
 
   if (competitorBonus > 1.0)
     reasons.push("Bonus: already mentions competitor brands");
@@ -498,7 +614,19 @@ export async function computeMatchesForBrand(
     throw new Error(`Brand not found: ${brandId}`);
   }
 
-  const brand = brandRow as Brand;
+  const brand = brandRow as Brand & {
+    content_embedding?: number[] | null;
+    ig_collaborators?: string[] | null;
+    ig_content_dna?: { recurring_topics?: string[] | null } | null;
+  };
+
+  // Flip to the IG-aware scoring path only when the pipeline has actually
+  // produced an embedding for this brand. Graceful-degradation default.
+  const hasIgAnalysis =
+    Array.isArray(brand.content_embedding) && brand.content_embedding.length > 0;
+  const brandEmbedding = hasIgAnalysis ? brand.content_embedding ?? null : null;
+  const brandCollaborators = brand.ig_collaborators ?? [];
+  const brandTopics = brand.ig_content_dna?.recurring_topics ?? [];
 
   // ── 2. Fetch brand_shopify_geo data ─────────────────────────────────
   const { data: geoRows } = await supabase
@@ -525,18 +653,33 @@ export async function computeMatchesForBrand(
     .filter((id): id is string => id !== null);
 
   // ── 4. Batch-fetch related data for all creators ────────────────────
+  // Fetch brand guidelines for brand safety scoring
+  const { data: guidelinesRow } = await supabase
+    .from("brand_guidelines")
+    .select("*")
+    .eq("brand_id", brandId)
+    .single();
+  const guidelines = guidelinesRow as { forbidden_topics?: string[] } | null;
+
+  const brandSafetyConfig: BrandSafetyConfig = {
+    brand_voice_preference: (brand as Record<string, unknown>).brand_voice_preference as BrandSafetyConfig["brand_voice_preference"] ?? null,
+    min_audience_age: (brand as Record<string, unknown>).min_audience_age as number | null ?? null,
+    product_categories: brand.product_categories ?? [],
+    forbidden_topics: guidelines?.forbidden_topics ?? [],
+  };
+
   const [captionResult, audienceResult, scoresResult, transcriptResult] = await Promise.all([
     supabase
       .from("caption_intelligence")
-      .select("creator_id, primary_niche, secondary_niche")
+      .select("creator_id, primary_niche, secondary_niche, primary_tone, secondary_tone, formality_score, engagement_bait_score, vulnerability_openness, recurring_topics, brand_categories")
       .in("creator_id", creatorIds),
     supabase
       .from("audience_intelligence")
-      .select("creator_id, geo_regions, authenticity_score")
+      .select("creator_id, geo_regions, authenticity_score, suspicious_patterns, sentiment_score, negative_themes, estimated_age_group")
       .in("creator_id", creatorIds),
     supabase
       .from("creator_scores")
-      .select("creator_id, engagement_quality, content_mix, brand_mentions")
+      .select("creator_id, engagement_quality, content_mix, brand_mentions, professionalism, content_quality, sponsored_post_rate, sponsored_vs_organic_delta, creator_reply_rate")
       .in("creator_id", creatorIds),
     supabase
       .from("transcript_intelligence")
@@ -545,47 +688,47 @@ export async function computeMatchesForBrand(
   ]);
 
   // Index by creator_id for fast lookup
-  const captionMap = new Map<
-    string,
-    { primary_niche: string | null; secondary_niche: string | null }
-  >();
-  for (const row of (captionResult.data ?? []) as Array<{
-    creator_id: string;
+  type CaptionRow = {
     primary_niche: string | null;
     secondary_niche: string | null;
-  }>) {
+    primary_tone: string | null;
+    secondary_tone: string | null;
+    formality_score: number | null;
+    engagement_bait_score: number | null;
+    vulnerability_openness: number | null;
+    recurring_topics: string[] | null;
+    brand_categories: string[] | null;
+  };
+  const captionMap = new Map<string, CaptionRow>();
+  for (const row of (captionResult.data ?? []) as Array<{ creator_id: string } & CaptionRow>) {
     captionMap.set(row.creator_id, row);
   }
 
-  const audienceMap = new Map<
-    string,
-    {
-      geo_regions: unknown;
-      authenticity_score: number | null;
-    }
-  >();
-  for (const row of (audienceResult.data ?? []) as Array<{
-    creator_id: string;
+  type AudienceRow = {
     geo_regions: unknown;
     authenticity_score: number | null;
-  }>) {
+    suspicious_patterns: string[] | null;
+    sentiment_score: number | null;
+    negative_themes: string[] | null;
+    estimated_age_group: string | null;
+  };
+  const audienceMap = new Map<string, AudienceRow>();
+  for (const row of (audienceResult.data ?? []) as Array<{ creator_id: string } & AudienceRow>) {
     audienceMap.set(row.creator_id, row);
   }
 
-  const scoresMap = new Map<
-    string,
-    {
-      engagement_quality: number | null;
-      content_mix: Record<string, number> | null;
-      brand_mentions: string[] | null;
-    }
-  >();
-  for (const row of (scoresResult.data ?? []) as Array<{
-    creator_id: string;
+  type ScoresRow = {
     engagement_quality: number | null;
     content_mix: Record<string, number> | null;
     brand_mentions: string[] | null;
-  }>) {
+    professionalism: number | null;
+    content_quality: number | null;
+    sponsored_post_rate: number | null;
+    sponsored_vs_organic_delta: number | null;
+    creator_reply_rate: number | null;
+  };
+  const scoresMap = new Map<string, ScoresRow>();
+  for (const row of (scoresResult.data ?? []) as Array<{ creator_id: string } & ScoresRow>) {
     scoresMap.set(row.creator_id, row);
   }
 
@@ -595,6 +738,37 @@ export async function computeMatchesForBrand(
     primary_spoken_language: string | null;
   }>) {
     transcriptMap.set(row.creator_id, row);
+  }
+
+  // ── 4c. (IG path only) Fetch creator embeddings + past-collab pool ─
+  const creatorEmbeddingMap = new Map<string, number[] | null>();
+  let pastCollaboratorEmbeddings: (number[] | null)[] = [];
+  if (hasIgAnalysis) {
+    const { data: embRows } = await supabase
+      .from("creators")
+      .select("id, content_embedding")
+      .in("id", creatorIds);
+    for (const row of (embRows ?? []) as Array<{
+      id: string;
+      content_embedding: number[] | null;
+    }>) {
+      creatorEmbeddingMap.set(row.id, row.content_embedding);
+    }
+
+    if (brandCollaborators.length) {
+      const { data: pastRows } = await supabase.rpc(
+        "fn_resolve_brand_past_collaborators",
+        { p_brand_id: brandId } as never
+      );
+      const pastList =
+        (pastRows as Array<{ content_embedding: number[] | null }> | null) ?? [];
+      pastCollaboratorEmbeddings = pastList
+        .map((r) => r.content_embedding)
+        .filter(
+          (v): v is number[] =>
+            Array.isArray(v) && v.length > 0
+        );
+    }
   }
 
   // ── 4b. Build brand zone needs (once, for all creators) ────────────
@@ -648,26 +822,93 @@ export async function computeMatchesForBrand(
       creatorScores?.engagement_quality ?? creator.engagement_quality
     );
 
-    // Modifiers
-    const authenticityMod = computeAuthenticityModifier(
-      audienceIntel?.authenticity_score ?? creator.authenticity_score
+    // Brand safety score (replaces authenticityMod)
+    const captionSafety: CaptionIntelForSafety | null = captionIntel
+      ? {
+          primary_tone: captionIntel.primary_tone as CaptionIntelForSafety["primary_tone"],
+          secondary_tone: captionIntel.secondary_tone as CaptionIntelForSafety["secondary_tone"],
+          formality_score: captionIntel.formality_score,
+          engagement_bait_score: captionIntel.engagement_bait_score,
+          vulnerability_openness: captionIntel.vulnerability_openness,
+          recurring_topics: captionIntel.recurring_topics,
+          brand_categories: captionIntel.brand_categories,
+        }
+      : null;
+    const audienceSafety: AudienceIntelForSafety | null = audienceIntel
+      ? {
+          authenticity_score: audienceIntel.authenticity_score,
+          suspicious_patterns: audienceIntel.suspicious_patterns,
+          estimated_age_group: audienceIntel.estimated_age_group,
+          sentiment_score: audienceIntel.sentiment_score,
+          negative_themes: audienceIntel.negative_themes,
+        }
+      : null;
+    const scoresSafety: CreatorScoresForSafety | null = creatorScores
+      ? {
+          professionalism: creatorScores.professionalism,
+          content_quality: creatorScores.content_quality,
+          creator_reply_rate: creatorScores.creator_reply_rate,
+          sponsored_post_rate: creatorScores.sponsored_post_rate,
+          sponsored_vs_organic_delta: creatorScores.sponsored_vs_organic_delta,
+        }
+      : null;
+
+    const brandSafety = computeBrandSafety(
+      captionSafety,
+      audienceSafety,
+      scoresSafety,
+      brandSafetyConfig
     );
+    const brandSafetyMod = Math.max(0.3, brandSafety);
+
+    // Modifiers
     const competitorBonus = computeCompetitorBonus(
       creatorScores?.brand_mentions ?? null,
       brand.competitor_brands
     );
 
-    // Composite score
-    const rawScore =
-      nicheFit * WEIGHTS.niche_fit +
-      audienceGeo * WEIGHTS.audience_geo +
-      budgetFit * WEIGHTS.budget_fit +
-      formatFit * WEIGHTS.content_format +
-      engagementQuality * WEIGHTS.engagement_quality;
+    // ── IG-signal sub-scores (only meaningful when hasIgAnalysis) ──
+    const creatorEmbedding = hasIgAnalysis
+      ? creatorEmbeddingMap.get(creator.creator_id) ?? null
+      : null;
+    const semanticSimilarity = hasIgAnalysis
+      ? computeSemanticSimilarity(brandEmbedding, creatorEmbedding)
+      : 0;
+    const pastCollabSimilarity = hasIgAnalysis
+      ? computePastCollabSimilarity(creatorEmbedding, pastCollaboratorEmbeddings)
+      : 0;
+    const themeOverlapBonus = hasIgAnalysis
+      ? computeThemeOverlapBonus(
+          brandTopics,
+          captionIntel?.recurring_topics ?? null
+        )
+      : 1.0;
+    const collabNetworkBonus = hasIgAnalysis
+      ? computeCollabNetworkBonus(creator.handle, brandCollaborators)
+      : 1.0;
+
+    // Composite score — branch on whether we have IG signals
+    const rawScore = hasIgAnalysis
+      ? nicheFit * WEIGHTS_WITH_IG.niche_fit +
+        semanticSimilarity * WEIGHTS_WITH_IG.semantic_similarity +
+        pastCollabSimilarity * WEIGHTS_WITH_IG.past_collab_similarity +
+        audienceGeo * WEIGHTS_WITH_IG.audience_geo +
+        budgetFit * WEIGHTS_WITH_IG.budget_fit +
+        formatFit * WEIGHTS_WITH_IG.content_format +
+        engagementQuality * WEIGHTS_WITH_IG.engagement_quality
+      : nicheFit * WEIGHTS.niche_fit +
+        audienceGeo * WEIGHTS.audience_geo +
+        budgetFit * WEIGHTS.budget_fit +
+        formatFit * WEIGHTS.content_format +
+        engagementQuality * WEIGHTS.engagement_quality;
 
     const finalScore = Math.min(
       1.0,
-      rawScore * authenticityMod * competitorBonus
+      rawScore *
+        brandSafetyMod *
+        competitorBonus *
+        themeOverlapBonus *
+        collabNetworkBonus
     );
 
     // Check if creator mentions the brand itself
@@ -693,10 +934,25 @@ export async function computeMatchesForBrand(
       budgetFit,
       formatFit,
       engagementQuality,
-      authenticityMod,
+      brandSafety,
       competitorBonus,
       finalScore
     );
+
+    const breakdown = {
+      niche_fit: nicheFit,
+      audience_geo: audienceGeo,
+      budget_fit: budgetFit,
+      content_format: formatFit,
+      engagement_quality: engagementQuality,
+      brand_safety: brandSafety,
+      competitor_bonus: competitorBonus,
+      semantic_similarity: semanticSimilarity,
+      past_collab_similarity: pastCollabSimilarity,
+      theme_overlap_bonus: themeOverlapBonus,
+      collab_network_bonus: collabNetworkBonus,
+      weights: hasIgAnalysis ? "with_ig" : "legacy",
+    };
 
     matchRows.push({
       creator_id: creator.creator_id,
@@ -706,13 +962,15 @@ export async function computeMatchesForBrand(
       audience_geo_score: Math.round(audienceGeo * 1000) / 1000,
       price_tier_score: Math.round(budgetFit * 1000) / 1000,
       engagement_score: Math.round(engagementQuality * 1000) / 1000,
-      brand_safety_score: Math.round(authenticityMod * 1000) / 1000,
+      brand_safety_score: Math.round(brandSafety * 1000) / 1000,
       content_style_score: Math.round(formatFit * 1000) / 1000,
       already_mentions_brand: alreadyMentionsBrand,
       mentions_competitor: mentionsCompetitor,
       geo_match_regions: matchedGeoRegions as unknown as Database["public"]["Tables"]["creator_brand_matches"]["Insert"]["geo_match_regions"],
       recommended_for: brand.default_campaign_goal,
       match_reasoning: reasoning,
+      match_score_breakdown: breakdown as unknown as Database["public"]["Tables"]["creator_brand_matches"]["Insert"]["match_score_breakdown"],
+      used_ig_signals: hasIgAnalysis,
       computed_at: new Date().toISOString(),
       algorithm_version: ALGORITHM_VERSION,
     });

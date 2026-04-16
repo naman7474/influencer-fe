@@ -44,6 +44,8 @@ export type Database = {
           first_scraped_at: string | null;
           last_scraped_at: string | null;
           is_active: boolean;
+          content_embedding: number[] | null;
+          embedding_computed_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -76,6 +78,8 @@ export type Database = {
           first_scraped_at?: string | null;
           last_scraped_at?: string | null;
           is_active?: boolean;
+          content_embedding?: number[] | null;
+          embedding_computed_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -108,6 +112,8 @@ export type Database = {
           first_scraped_at?: string | null;
           last_scraped_at?: string | null;
           is_active?: boolean;
+          content_embedding?: number[] | null;
+          embedding_computed_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -551,6 +557,20 @@ export type Database = {
           email_include_tracking: boolean;
           email_include_logo: boolean;
           agent_enabled: boolean;
+          brand_description: string | null;
+          brand_values: string[] | null;
+          target_audience: string | null;
+          brand_voice_preference: Database["public"]["Enums"]["content_tone"] | null;
+          instagram_handle: string | null;
+          min_audience_age: number | null;
+          ig_analysis_status: string;
+          ig_analysis_completed_at: string | null;
+          ig_analysis_error: string | null;
+          ig_content_dna: Json | null;
+          ig_audience_profile: Json | null;
+          ig_collaborators: string[];
+          content_embedding: number[] | null;
+          embedding_computed_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -583,6 +603,20 @@ export type Database = {
           email_include_tracking?: boolean;
           email_include_logo?: boolean;
           agent_enabled?: boolean;
+          brand_description?: string | null;
+          brand_values?: string[] | null;
+          target_audience?: string | null;
+          brand_voice_preference?: Database["public"]["Enums"]["content_tone"] | null;
+          instagram_handle?: string | null;
+          min_audience_age?: number | null;
+          ig_analysis_status?: string;
+          ig_analysis_completed_at?: string | null;
+          ig_analysis_error?: string | null;
+          ig_content_dna?: Json | null;
+          ig_audience_profile?: Json | null;
+          ig_collaborators?: string[];
+          content_embedding?: number[] | null;
+          embedding_computed_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -615,6 +649,68 @@ export type Database = {
           email_include_tracking?: boolean;
           email_include_logo?: boolean;
           agent_enabled?: boolean;
+          brand_description?: string | null;
+          brand_values?: string[] | null;
+          target_audience?: string | null;
+          brand_voice_preference?: Database["public"]["Enums"]["content_tone"] | null;
+          instagram_handle?: string | null;
+          min_audience_age?: number | null;
+          ig_analysis_status?: string;
+          ig_analysis_completed_at?: string | null;
+          ig_analysis_error?: string | null;
+          ig_content_dna?: Json | null;
+          ig_audience_profile?: Json | null;
+          ig_collaborators?: string[];
+          content_embedding?: number[] | null;
+          embedding_computed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+
+      brand_guidelines: {
+        Row: {
+          id: string;
+          brand_id: string;
+          forbidden_topics: string[];
+          content_dos: string[];
+          content_donts: string[];
+          required_disclosures: string[];
+          preferred_content_themes: string[];
+          content_rating: string;
+          require_paid_partnership_label: boolean;
+          max_sponsored_post_rate: number | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          brand_id: string;
+          forbidden_topics?: string[];
+          content_dos?: string[];
+          content_donts?: string[];
+          required_disclosures?: string[];
+          preferred_content_themes?: string[];
+          content_rating?: string;
+          require_paid_partnership_label?: boolean;
+          max_sponsored_post_rate?: number | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          brand_id?: string;
+          forbidden_topics?: string[];
+          content_dos?: string[];
+          content_donts?: string[];
+          required_disclosures?: string[];
+          preferred_content_themes?: string[];
+          content_rating?: string;
+          require_paid_partnership_label?: boolean;
+          max_sponsored_post_rate?: number | null;
+          notes?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -826,6 +922,8 @@ export type Database = {
           geo_match_regions: Json | null;
           recommended_for: Database["public"]["Enums"]["campaign_goal"] | null;
           match_reasoning: string | null;
+          match_score_breakdown: Json | null;
+          used_ig_signals: boolean;
           computed_at: string | null;
           algorithm_version: string | null;
           created_at: string;
@@ -847,6 +945,8 @@ export type Database = {
           geo_match_regions?: Json | null;
           recommended_for?: Database["public"]["Enums"]["campaign_goal"] | null;
           match_reasoning?: string | null;
+          match_score_breakdown?: Json | null;
+          used_ig_signals?: boolean;
           computed_at?: string | null;
           algorithm_version?: string | null;
           created_at?: string;
@@ -868,6 +968,8 @@ export type Database = {
           geo_match_regions?: Json | null;
           recommended_for?: Database["public"]["Enums"]["campaign_goal"] | null;
           match_reasoning?: string | null;
+          match_score_breakdown?: Json | null;
+          used_ig_signals?: boolean;
           computed_at?: string | null;
           algorithm_version?: string | null;
           created_at?: string;
@@ -2295,6 +2397,28 @@ export type Database = {
           total_count: number;
         }[];
       };
+      fn_find_similar_creators: {
+        Args: {
+          p_embedding: number[];
+          p_limit?: number;
+          p_min_similarity?: number;
+          p_exclude_ids?: string[];
+        };
+        Returns: {
+          creator_id: string;
+          similarity: number;
+        }[];
+      };
+      fn_resolve_brand_past_collaborators: {
+        Args: {
+          p_brand_id: string;
+        };
+        Returns: {
+          creator_id: string;
+          handle: string;
+          content_embedding: number[] | null;
+        }[];
+      };
     };
 
     Enums: {
@@ -2356,6 +2480,10 @@ export type AudienceIntelligenceUpdate = Database["public"]["Tables"]["audience_
 export type Brand = Database["public"]["Tables"]["brands"]["Row"];
 export type BrandInsert = Database["public"]["Tables"]["brands"]["Insert"];
 export type BrandUpdate = Database["public"]["Tables"]["brands"]["Update"];
+
+export type BrandGuidelines = Database["public"]["Tables"]["brand_guidelines"]["Row"];
+export type BrandGuidelinesInsert = Database["public"]["Tables"]["brand_guidelines"]["Insert"];
+export type BrandGuidelinesUpdate = Database["public"]["Tables"]["brand_guidelines"]["Update"];
 
 export type BrandShopifyGeo = Database["public"]["Tables"]["brand_shopify_geo"]["Row"];
 export type BrandShopifyGeoInsert = Database["public"]["Tables"]["brand_shopify_geo"]["Insert"];

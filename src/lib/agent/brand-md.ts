@@ -49,6 +49,17 @@ export function generateBrandMd(brand: Brand): string {
     );
   }
 
+  // Brand Identity (from website scraping / settings)
+  if (brand.brand_description || brand.brand_values?.length || brand.target_audience || brand.brand_voice_preference) {
+    sections.push(`\n## Brand Identity`);
+    if (brand.brand_description) sections.push(`- Description: ${brand.brand_description}`);
+    if (brand.brand_values?.length) sections.push(`- Core values: ${brand.brand_values.join(", ")}`);
+    if (brand.target_audience) sections.push(`- Target audience: ${brand.target_audience}`);
+    if (brand.brand_voice_preference) sections.push(`- Brand voice: ${brand.brand_voice_preference}`);
+    if (brand.min_audience_age) sections.push(`- Minimum audience age: ${brand.min_audience_age}+`);
+    if (brand.instagram_handle) sections.push(`- Instagram: @${brand.instagram_handle}`);
+  }
+
   if (brand.email_sender_name) {
     sections.push(`\n## Email Settings\n- Sender name: ${brand.email_sender_name}`);
   }

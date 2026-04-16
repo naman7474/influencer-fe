@@ -33,6 +33,7 @@ import {
   ArrowRightIcon,
   Loader2Icon,
   ImageIcon,
+  AtSignIcon,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -135,6 +136,23 @@ function extractDomain(url: string): string | null {
   }
 }
 
+/**
+ * Normalize an Instagram handle input: strip @, URL prefixes, trailing slash,
+ * lowercase. Returns empty string if nothing useful is left.
+ */
+function normalizeInstagramHandle(raw: string): string {
+  if (!raw) return "";
+  let h = raw.trim().toLowerCase();
+  // Strip instagram.com URL prefix if user pasted one
+  h = h.replace(/^https?:\/\/(www\.)?instagram\.com\//i, "");
+  h = h.replace(/^instagram\.com\//i, "");
+  h = h.replace(/^@/, "");
+  h = h.replace(/\/$/, "");
+  // Strip query string / anchor
+  h = h.split("?")[0].split("#")[0];
+  return h;
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -149,6 +167,7 @@ export default function BrandProfilePage() {
   const [brandName, setBrandName] = useState("");
   const [website, setWebsite] = useState("");
   const [websiteDomain, setWebsiteDomain] = useState<string | null>(null);
+  const [instagramHandle, setInstagramHandle] = useState("");
   const [industry, setIndustry] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -165,6 +184,10 @@ export default function BrandProfilePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // ---- website scraping auto-fill ----
+  const [scraping, setScraping] = useState(false);
+  const [scrapeSuggestions, setScrapeSuggestions] = useState<Record<string, unknown> | null>(null);
 
   // ---- load existing brand data ----
   useEffect(() => {
@@ -189,6 +212,7 @@ export default function BrandProfilePage() {
         setBrandName(brand.brand_name ?? "");
         setWebsite(brand.website ?? "");
         setWebsiteDomain(extractDomain(brand.website ?? ""));
+        setInstagramHandle(brand.instagram_handle ?? "");
         setIndustry(brand.industry ?? null);
         setExistingLogoUrl(brand.logo_url ?? null);
         setProductCategories(brand.product_categories ?? []);
@@ -211,9 +235,30 @@ export default function BrandProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---- website blur -> extract domain ----
+  // ---- website blur -> extract domain + trigger scrape ----
   const handleWebsiteBlur = useCallback(() => {
-    setWebsiteDomain(extractDomain(website));
+    const domain = extractDomain(website);
+    setWebsiteDomain(domain);
+
+    // Auto-fill: scrape website when URL is entered
+    if (domain && website.length > 5) {
+      const normalizedUrl = website.startsWith("http") ? website : `https://${website}`;
+      setScraping(true);
+      setScrapeSuggestions(null);
+      fetch("/api/scrape/website", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: normalizedUrl }),
+      })
+        .then((r) => r.json())
+        .then((res) => {
+          if (res.data) {
+            setScrapeSuggestions(res.data);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setScraping(false));
+    }
   }, [website]);
 
   // ---- logo upload preview ----
@@ -302,6 +347,7 @@ export default function BrandProfilePage() {
 
       const payload: BrandUpdate = {
         website: website || null,
+        instagram_handle: instagramHandle || null,
         industry,
         logo_url: logoUrl,
         product_categories:
@@ -418,6 +464,82 @@ export default function BrandProfilePage() {
                   </p>
                 )}
               </div>
+
+              {/* Instagram handle */}
+              <div className="space-y-1.5">
+                <Label htmlFor="instagram-handle">
+                  Instagram Handle{" "}
+                  <span className="text-muted-foreground">(optional)</span>
+                </Label>
+                <div className="relative">
+                  <AtSignIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="instagram-handle"
+                    type="text"
+                    placeholder="@yourbrand"
+                    value={instagramHandle ? "@" + instagramHandle : ""}
+                    onChange={(e) =>
+                      setInstagramHandle(normalizeInstagramHandle(e.target.value))
+                    }
+                    className="pl-8"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  We&apos;ll analyze your recent posts to find creators who match your content.
+                </p>
+              </div>
+
+              {/* Website scraping indicator + suggestions */}
+              {scraping && (
+                <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+                    <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" className="opacity-75" />
+                  </svg>
+                  Analyzing your website...
+                </div>
+              )}
+              {scrapeSuggestions && !scraping && (
+                <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 dark:border-green-800 dark:bg-green-900/20">
+                  <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                    We found info about your brand
+                  </p>
+                  <p className="mt-0.5 text-xs text-green-700 dark:text-green-400">
+                    {scrapeSuggestions.description ? "Description" : ""}
+                    {scrapeSuggestions.industry ? ", Industry" : ""}
+                    {(scrapeSuggestions.product_categories as string[] | undefined)?.length ? ", Products" : ""}
+                    {scrapeSuggestions.instagram_handle ? ", Instagram" : ""}
+                    {" detected."}
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-1.5 text-xs font-medium text-green-800 underline underline-offset-2 hover:text-green-900 dark:text-green-300"
+                    onClick={() => {
+                      const s = scrapeSuggestions;
+                      if (s.industry && !industry) {
+                        // Match to closest INDUSTRIES option
+                        const industryStr = (s.industry as string).toLowerCase();
+                        const matched = INDUSTRIES.find((i) =>
+                          i.toLowerCase().includes(industryStr) || industryStr.includes(i.toLowerCase().split(" ")[0])
+                        );
+                        if (matched) setIndustry(matched);
+                      }
+                      if ((s.product_categories as string[] | undefined)?.length && productCategories.length === 0) {
+                        setProductCategories(s.product_categories as string[]);
+                      }
+                      if (typeof s.instagram_handle === "string" && !instagramHandle) {
+                        setInstagramHandle(normalizeInstagramHandle(s.instagram_handle));
+                      }
+                      setScrapeSuggestions(null);
+                    }}
+                  >
+                    Apply suggestions
+                  </button>
+                </div>
+              )}
 
               {/* Industry */}
               <div className="space-y-1.5">
@@ -669,6 +791,19 @@ export default function BrandProfilePage() {
                     )}
                   </div>
                 </div>
+
+                {/* Instagram handle */}
+                {instagramHandle && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Instagram
+                    </p>
+                    <p className="mt-0.5 flex items-center gap-1 text-sm">
+                      <AtSignIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                      @{instagramHandle}
+                    </p>
+                  </div>
+                )}
 
                 {/* Industry */}
                 {industry && (

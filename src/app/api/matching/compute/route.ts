@@ -1,49 +1,74 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { computeMatchesForBrand } from "@/lib/matching/engine";
 
-export async function POST() {
+/**
+ * POST /api/matching/compute
+ *
+ * Two auth paths:
+ *  1. User session (browser) — resolves brand_id from the logged-in user.
+ *  2. Worker secret + explicit brand_id in body — used by the pipeline worker
+ *     after the creator fanout finishes (no user session available).
+ */
+export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient();
+    let brandId: string | null = null;
 
-    // ── 1. Authenticate user ────────────────────────────────────────
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    // ── Try worker-secret auth first (pipeline callback) ────────────
+    const workerSecret = request.headers.get("x-worker-secret");
+    const configuredSecret = process.env.MATCHING_COMPUTE_SECRET;
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized. Please sign in." },
-        { status: 401 }
-      );
+    if (workerSecret && configuredSecret && workerSecret === configuredSecret) {
+      const body = await request.json().catch(() => ({}));
+      brandId = (body as { brand_id?: string }).brand_id ?? null;
+      if (!brandId) {
+        return NextResponse.json(
+          { error: "brand_id required when using worker secret auth" },
+          { status: 400 }
+        );
+      }
     }
 
-    // ── 2. Get their brand_id ───────────────────────────────────────
-    const { data: brandRow, error: brandError } = await supabase
-      .from("brands")
-      .select("id")
-      .eq("auth_user_id", user.id)
-      .single();
+    // ── Fall back to user session auth (browser) ────────────────────
+    if (!brandId) {
+      const supabase = await createServerSupabaseClient();
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-    const brand = brandRow as { id: string } | null;
+      if (authError || !user) {
+        return NextResponse.json(
+          { error: "Unauthorized. Please sign in." },
+          { status: 401 }
+        );
+      }
 
-    if (brandError || !brand) {
-      return NextResponse.json(
-        { error: "Brand profile not found. Complete onboarding first." },
-        { status: 404 }
-      );
+      const { data: brandRow, error: brandError } = await supabase
+        .from("brands")
+        .select("id")
+        .eq("auth_user_id", user.id)
+        .single();
+
+      const brand = brandRow as { id: string } | null;
+
+      if (brandError || !brand) {
+        return NextResponse.json(
+          { error: "Brand profile not found. Complete onboarding first." },
+          { status: 404 }
+        );
+      }
+      brandId = brand.id;
     }
 
-    // ── 3. Compute matches (service role to bypass RLS on upsert) ───
+    // ── Compute matches (service role to bypass RLS on upsert) ──────
     const serviceSupabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_KEY!
     );
-    const matchCount = await computeMatchesForBrand(serviceSupabase, brand.id);
+    const matchCount = await computeMatchesForBrand(serviceSupabase, brandId);
 
-    // ── 4. Return result ────────────────────────────────────────────
     return NextResponse.json({
       success: true,
       matchCount,

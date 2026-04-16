@@ -44,10 +44,13 @@ import {
   Image as ImageIcon,
   KeyRound,
   Link as LinkIcon,
+  Loader2,
   LogOut,
   Plug,
+  RefreshCw,
   Save,
   Settings2,
+  ShieldCheck,
   ShoppingBag,
   SlidersHorizontal,
   Sparkles,
@@ -223,6 +226,40 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
   const [prefsSaving, setPrefsSaving] = useState(false);
   const [prefsMessage, setPrefsMessage] = useState<string | null>(null);
 
+  // ---- Brand Safety state ----
+  const [brandDescription, setBrandDescription] = useState(brand?.brand_description ?? "");
+  const [brandValues, setBrandValues] = useState<string[]>(brand?.brand_values ?? []);
+  const [targetAudience, setTargetAudience] = useState(brand?.target_audience ?? "");
+  const [brandVoicePref, setBrandVoicePref] = useState(brand?.brand_voice_preference ?? "");
+  const [instagramHandle, setInstagramHandle] = useState(brand?.instagram_handle ?? "");
+  const [minAudienceAge, setMinAudienceAge] = useState(brand?.min_audience_age?.toString() ?? "");
+  const [forbiddenTopics, setForbiddenTopics] = useState<string[]>([]);
+  const [contentDos, setContentDos] = useState<string[]>([]);
+  const [contentDonts, setContentDonts] = useState<string[]>([]);
+  const [contentRating, setContentRating] = useState("general");
+  const [requirePartnershipLabel, setRequirePartnershipLabel] = useState(true);
+  const [safetySaving, setSafetySaving] = useState(false);
+  const [safetyMessage, setSafetyMessage] = useState<string | null>(null);
+  const [scraping, setScraping] = useState(false);
+
+  // Load brand guidelines on mount
+  useEffect(() => {
+    if (!brand?.id) return;
+    fetch(`/api/brands/${brand.id}/guidelines`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.data) {
+          const g = res.data;
+          setForbiddenTopics(g.forbidden_topics ?? []);
+          setContentDos(g.content_dos ?? []);
+          setContentDonts(g.content_donts ?? []);
+          setContentRating(g.content_rating ?? "general");
+          setRequirePartnershipLabel(g.require_paid_partnership_label ?? true);
+        }
+      })
+      .catch(() => {}); // guidelines may not exist yet
+  }, [brand?.id]);
+
   // ---- Account state ----
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -372,6 +409,89 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
     setProfileMessage("Logo uploaded. Click Save to apply.");
   }
 
+  async function handleSaveBrandSafety() {
+    if (!brand) return;
+    setSafetySaving(true);
+    setSafetyMessage(null);
+
+    // Save brand identity fields
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: brandError } = await (supabase.from("brands") as any)
+      .update({
+        brand_description: brandDescription || null,
+        brand_values: brandValues.length ? brandValues : null,
+        target_audience: targetAudience || null,
+        brand_voice_preference: brandVoicePref || null,
+        instagram_handle: instagramHandle || null,
+        min_audience_age: minAudienceAge ? parseInt(minAudienceAge, 10) : null,
+      })
+      .eq("id", brand.id);
+
+    if (brandError) {
+      setSafetySaving(false);
+      setSafetyMessage("Failed to save brand identity.");
+      return;
+    }
+
+    // Save guidelines
+    const guidelinesRes = await fetch(`/api/brands/${brand.id}/guidelines`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        forbidden_topics: forbiddenTopics,
+        content_dos: contentDos,
+        content_donts: contentDonts,
+        content_rating: contentRating,
+        require_paid_partnership_label: requirePartnershipLabel,
+      }),
+    });
+
+    if (!guidelinesRes.ok) {
+      setSafetySaving(false);
+      setSafetyMessage("Failed to save content guidelines.");
+      return;
+    }
+
+    // Trigger match recomputation with updated brand safety config
+    fetch("/api/matching/compute", { method: "POST" }).catch(() => {});
+
+    setSafetySaving(false);
+    setSafetyMessage("Brand safety settings saved. Match scores are being recomputed.");
+    router.refresh();
+  }
+
+  async function handleRescrapeWebsite() {
+    if (!brand) return;
+    setScraping(true);
+    setSafetyMessage(null);
+
+    try {
+      const res = await fetch(`/api/brands/${brand.id}/scrape`, {
+        method: "POST",
+      });
+      const result = await res.json();
+
+      if (!res.ok || result.error) {
+        setSafetyMessage(result.error || "Failed to analyze website.");
+      } else if (result.data) {
+        // Auto-fill from extraction
+        if (result.data.description && !brandDescription) {
+          setBrandDescription(result.data.description);
+        }
+        if (result.data.brand_values?.length && !brandValues.length) {
+          setBrandValues(result.data.brand_values);
+        }
+        if (result.data.target_audience && !targetAudience) {
+          setTargetAudience(result.data.target_audience);
+        }
+        setSafetyMessage("Website analyzed. Review the extracted data and save.");
+      }
+    } catch {
+      setSafetyMessage("Failed to analyze website.");
+    }
+    setScraping(false);
+  }
+
   /* ---------------------------------------------------------------- */
   /*  Render                                                           */
   /* ---------------------------------------------------------------- */
@@ -394,6 +514,10 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
         <TabsTrigger value="agent" className="gap-1.5">
           <Sparkles className="size-3.5" />
           AI Agent
+        </TabsTrigger>
+        <TabsTrigger value="brand-safety" className="gap-1.5">
+          <ShieldCheck className="size-3.5" />
+          Brand Safety
         </TabsTrigger>
         <TabsTrigger value="account" className="gap-1.5">
           <KeyRound className="size-3.5" />
@@ -800,6 +924,245 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
       {/* ============================================================= */}
       <TabsContent value="agent">
         <AgentSettingsRedirect brand={brand} />
+      </TabsContent>
+
+      {/* ============================================================= */}
+      {/*  Brand Safety Tab                                               */}
+      {/* ============================================================= */}
+      <TabsContent value="brand-safety">
+        <div className="flex flex-col gap-6">
+          {/* Website Analysis */}
+          {brand?.website && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Globe className="size-4 text-primary" />
+                  Website Analysis
+                </CardTitle>
+                <CardDescription>
+                  Extract brand identity from your website automatically.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button
+                  variant="outline"
+                  onClick={handleRescrapeWebsite}
+                  disabled={scraping}
+                >
+                  {scraping ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="size-3.5" />
+                      Analyze Website
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Brand Identity */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="size-4 text-primary" />
+                Brand Identity
+              </CardTitle>
+              <CardDescription>
+                Define your brand identity to improve creator matching accuracy.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-4 max-w-2xl">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="brand-description">Brand Description</Label>
+                  <textarea
+                    id="brand-description"
+                    className="flex min-h-[80px] w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+                    value={brandDescription}
+                    onChange={(e) => setBrandDescription(e.target.value)}
+                    placeholder="A brief description of your brand and what you do..."
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label>Brand Values</Label>
+                  <TagInput
+                    tags={brandValues}
+                    onChange={setBrandValues}
+                    placeholder="e.g. sustainable, premium, family-friendly"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="target-audience">Target Audience</Label>
+                  <textarea
+                    id="target-audience"
+                    className="flex min-h-[60px] w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+                    value={targetAudience}
+                    onChange={(e) => setTargetAudience(e.target.value)}
+                    placeholder="e.g. Health-conscious women aged 25-35 in urban India"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <Label>Brand Voice</Label>
+                    <Select value={brandVoicePref} onValueChange={(val) => setBrandVoicePref(val as string)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select tone" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="casual">Casual</SelectItem>
+                        <SelectItem value="professional">Professional</SelectItem>
+                        <SelectItem value="funny">Funny</SelectItem>
+                        <SelectItem value="emotional">Emotional</SelectItem>
+                        <SelectItem value="educational">Educational</SelectItem>
+                        <SelectItem value="inspirational">Inspirational</SelectItem>
+                        <SelectItem value="polished">Polished</SelectItem>
+                        <SelectItem value="raw">Raw / Authentic</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="min-audience-age">Min Audience Age</Label>
+                    <Input
+                      id="min-audience-age"
+                      type="number"
+                      min={0}
+                      max={99}
+                      value={minAudienceAge}
+                      onChange={(e) => setMinAudienceAge(e.target.value)}
+                      placeholder="e.g. 18"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="instagram-handle">Instagram Handle</Label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">@</span>
+                    <Input
+                      id="instagram-handle"
+                      value={instagramHandle}
+                      onChange={(e) => setInstagramHandle(e.target.value.replace(/^@/, ""))}
+                      placeholder="yourbrand"
+                      className="flex-1"
+                    />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Content Guidelines */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="size-4 text-primary" />
+                Content Guidelines
+              </CardTitle>
+              <CardDescription>
+                Set rules for what creators should and shouldn&apos;t do. These guidelines affect brand safety scoring.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-4 max-w-2xl">
+                <div className="flex flex-col gap-1.5">
+                  <Label>Forbidden Topics</Label>
+                  <TagInput
+                    tags={forbiddenTopics}
+                    onChange={setForbiddenTopics}
+                    placeholder="e.g. politics, gambling, adult content"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Creators discussing these topics will receive a lower brand safety score.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label>Content Dos</Label>
+                  <TagInput
+                    tags={contentDos}
+                    onChange={setContentDos}
+                    placeholder="e.g. show product in use, mention key benefits"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label>Content Don&apos;ts</Label>
+                  <TagInput
+                    tags={contentDonts}
+                    onChange={setContentDonts}
+                    placeholder="e.g. no competitor comparisons, no health claims"
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <Label>Content Rating</Label>
+                    <Select value={contentRating} onValueChange={(val) => setContentRating(val as string)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="general">General (All ages)</SelectItem>
+                        <SelectItem value="teen">Teen (13+)</SelectItem>
+                        <SelectItem value="mature">Mature (18+)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-5">
+                    <Switch
+                      checked={requirePartnershipLabel}
+                      onCheckedChange={setRequirePartnershipLabel}
+                    />
+                    <Label>Require paid partnership label</Label>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Save */}
+          {safetyMessage && (
+            <p
+              className={`text-sm ${
+                safetyMessage.includes("saved") || safetyMessage.includes("analyzed")
+                  ? "text-success"
+                  : "text-destructive"
+              }`}
+            >
+              {safetyMessage}
+            </p>
+          )}
+
+          <Button
+            onClick={handleSaveBrandSafety}
+            disabled={safetySaving}
+            className="w-fit"
+          >
+            {safetySaving ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="size-3.5" />
+                Save Brand Safety Settings
+              </>
+            )}
+          </Button>
+        </div>
       </TabsContent>
 
       {/* ============================================================= */}
