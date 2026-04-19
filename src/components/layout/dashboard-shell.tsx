@@ -51,11 +51,15 @@ export function DashboardShell({ brand, children }: DashboardShellProps) {
           />
 
           <main className="flex-1 overflow-y-auto">
-            <div className="mx-auto max-w-[1280px] px-4 py-6 md:px-8 md:py-6">
-              {children}
-            </div>
+            {isAgentPage ? (
+              children
+            ) : (
+              <div className="mx-auto max-w-[1280px] px-4 py-6 md:px-8 md:py-6">
+                {children}
+              </div>
+            )}
             {/* Spacer for mobile bottom nav */}
-            <div className="h-16 md:hidden" />
+            {!isAgentPage && <div className="h-16 md:hidden" />}
           </main>
         </div>
 

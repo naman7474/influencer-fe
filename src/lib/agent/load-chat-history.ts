@@ -1,10 +1,17 @@
 import type { UIMessage } from "ai";
 
+interface DBToolCall {
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  output: Record<string, unknown> | null;
+}
+
 interface DBMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  tool_calls: unknown;
+  tool_calls: DBToolCall[] | null;
   created_at: string;
   session_id: string | null;
 }
@@ -12,6 +19,9 @@ interface DBMessage {
 /**
  * Fetch persisted chat history from the API and convert to UIMessage format
  * compatible with useChat's setMessages.
+ *
+ * Reconstructs tool invocation parts from stored tool_calls so that
+ * extractHighlights() can derive artifact cards from loaded history.
  */
 export async function loadChatHistory(sessionId?: string): Promise<UIMessage[]> {
   try {
@@ -19,19 +29,64 @@ export async function loadChatHistory(sessionId?: string): Promise<UIMessage[]> 
       ? `/api/agent/conversations?sessionId=${sessionId}`
       : "/api/agent/conversations";
     const res = await fetch(url);
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.warn("[loadChatHistory] fetch failed:", res.status, res.statusText);
+      return [];
+    }
     const json = await res.json();
     const data = json.data as DBMessage[];
-    if (!data?.length) return [];
+    if (!data?.length) {
+      console.warn("[loadChatHistory] no messages returned for session", sessionId);
+      return [];
+    }
 
-    return data
-      .filter((msg) => msg.content?.trim())
-      .map((msg) => ({
-        id: msg.id,
-        role: msg.role as "user" | "assistant",
-        parts: [{ type: "text" as const, text: msg.content }],
-        createdAt: new Date(msg.created_at),
-      }));
+    console.log("[loadChatHistory] loaded", data.length, "messages, tool_calls breakdown:",
+      data.map(m => ({
+        role: m.role,
+        hasContent: !!m.content?.trim(),
+        toolCallCount: m.tool_calls?.length ?? 0,
+        toolCallsWithOutput: m.tool_calls?.filter(tc => tc.output)?.length ?? 0,
+      }))
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (data
+      .filter((msg) => msg.content?.trim() || (msg.tool_calls && msg.tool_calls.length > 0))
+      .map((msg) => {
+        const parts: Array<Record<string, unknown>> = [];
+
+        // Add text part if content exists
+        if (msg.content?.trim()) {
+          parts.push({ type: "text" as const, text: msg.content });
+        }
+
+        // Reconstruct tool invocation parts from saved tool_calls
+        if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+          for (const tc of msg.tool_calls) {
+            if (tc.output) {
+              // Completed tool call — extractHighlights looks for these.
+              // input MUST always be a valid object (never undefined/null)
+              // or convertToModelMessages → Anthropic API rejects with
+              // "tool_use.input: Field required".
+              parts.push({
+                type: `tool-${tc.toolName}`,
+                toolCallId: tc.toolCallId,
+                toolName: tc.toolName,
+                state: "output-available",
+                input: tc.args ?? {},
+                output: tc.output,
+              });
+            }
+          }
+        }
+
+        return {
+          id: msg.id,
+          role: msg.role as "user" | "assistant",
+          parts,
+          createdAt: new Date(msg.created_at),
+        };
+      })) as unknown as UIMessage[];
   } catch {
     return [];
   }

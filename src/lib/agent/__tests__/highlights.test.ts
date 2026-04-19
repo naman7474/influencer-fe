@@ -302,6 +302,300 @@ describe("findHighlightByHandle", () => {
   });
 });
 
+/* ── Additional buildLabels branch coverage ────────────────── */
+
+describe("buildLabels coverage", () => {
+  it("campaign_overview with campaigns array", () => {
+    const output = { campaigns: [{ id: "c1" }, { id: "c2" }] };
+    const h = extractHighlights(singleTool("campaign_status_manager", output));
+    expect(h[0].kind).toBe("campaign_overview");
+    expect(h[0].title).toBe("2 campaigns");
+  });
+
+  it("campaign_overview with single campaign", () => {
+    const output = { campaigns: [{ id: "c1" }] };
+    const h = extractHighlights(singleTool("campaign_status_manager", output));
+    expect(h[0].title).toBe("1 campaign");
+  });
+
+  it("campaign_overview with no campaigns array", () => {
+    const output = { message: "done" };
+    const h = extractHighlights(singleTool("campaign_status_manager", output));
+    expect(h[0].title).toBe("0 campaigns");
+  });
+
+  it("campaign_created with nested campaign.name", () => {
+    const output = { campaign: { name: "Nested Name" }, status: "active" };
+    const h = extractHighlights(singleTool("campaign_builder", output));
+    // status:pending+approval_id absent, so kind stays campaign_created
+    expect(h[0].title).toContain("Nested Name");
+    expect(h[0].subtitle).toBe("active");
+  });
+
+  it("campaign_created with no name fallback", () => {
+    const output = { status: "draft" };
+    const h = extractHighlights(singleTool("campaign_builder", output));
+    expect(h[0].title).toContain("New campaign");
+  });
+
+  it("rate_benchmark with no tier", () => {
+    const output = { market_rate: { min: 100, median: 500, max: 1000 } };
+    const h = extractHighlights(singleTool("rate_benchmarker", output));
+    expect(h[0].title).toBe("Rate benchmark");
+    expect(h[0].subtitle).toBe("Median ₹500");
+  });
+
+  it("rate_benchmark with no median", () => {
+    const output = { tier: "nano" };
+    const h = extractHighlights(singleTool("rate_benchmarker", output));
+    expect(h[0].title).toBe("Rate benchmark — nano");
+    expect(h[0].subtitle).toBeUndefined();
+  });
+
+  it("negotiation with creator handle", () => {
+    const output = { negotiation: { creator_handle: "test_creator" } };
+    const h = extractHighlights(singleTool("counter_offer_generator", output));
+    expect(h[0].kind).toBe("negotiation");
+    expect(h[0].title).toBe("Counter-offer for @test_creator");
+  });
+
+  it("negotiation with nested creator.handle", () => {
+    const output = { negotiation: { creator: { handle: "nested_handle" } } };
+    const h = extractHighlights(singleTool("counter_offer_generator", output));
+    expect(h[0].title).toBe("Counter-offer for @nested_handle");
+  });
+
+  it("negotiation with no handle fallback", () => {
+    const output = { negotiation: {} };
+    const h = extractHighlights(singleTool("counter_offer_generator", output));
+    expect(h[0].title).toBe("Counter-offer drafted");
+  });
+
+  it("deal_memo with handle", () => {
+    const output = { deal_memo: { creator: { handle: "dm_creator" } } };
+    const h = extractHighlights(singleTool("deal_memo_generator", output));
+    expect(h[0].kind).toBe("deal_memo");
+    expect(h[0].title).toBe("Deal memo — @dm_creator");
+  });
+
+  it("deal_memo with no handle", () => {
+    const output = { deal_memo: {} };
+    const h = extractHighlights(singleTool("deal_memo_generator", output));
+    expect(h[0].title).toBe("Deal memo ready");
+  });
+
+  it("budget with campaign name and usage", () => {
+    const output = { campaign: "Summer Drop", budget_summary: { budget_used_percent: 45 } };
+    const h = extractHighlights(singleTool("budget_optimizer", output));
+    expect(h[0].kind).toBe("budget");
+    expect(h[0].title).toBe("Budget — Summer Drop");
+    expect(h[0].subtitle).toBe("45% used");
+  });
+
+  it("budget with no campaign name fallback", () => {
+    const output = {};
+    const h = extractHighlights(singleTool("budget_optimizer", output));
+    expect(h[0].title).toBe("Budget — campaign");
+    expect(h[0].subtitle).toBeUndefined();
+  });
+
+  it("roi with no campaign name", () => {
+    const output = { kpis: { roi: 2.5 } };
+    const h = extractHighlights(singleTool("roi_calculator", output));
+    expect(h[0].title).toBe("ROI — campaign");
+    expect(h[0].subtitle).toBe("2.5x");
+  });
+
+  it("roi with no kpis", () => {
+    const output = { campaign: "Test" };
+    const h = extractHighlights(singleTool("roi_calculator", output));
+    expect(h[0].title).toBe("ROI — Test");
+    expect(h[0].subtitle).toBeUndefined();
+  });
+
+  it("content_tracked with posts", () => {
+    const output = { posts: [{ id: "p1" }] };
+    const h = extractHighlights(singleTool("content_tracker", output));
+    expect(h[0].kind).toBe("content_tracked");
+    expect(h[0].title).toBe("1 post tracked");
+  });
+
+  it("content_tracked with multiple posts", () => {
+    const output = { posts: [{ id: "p1" }, { id: "p2" }, { id: "p3" }] };
+    const h = extractHighlights(singleTool("content_tracker", output));
+    expect(h[0].title).toBe("3 posts tracked");
+  });
+
+  it("content_tracked with no posts", () => {
+    const output = {};
+    const h = extractHighlights(singleTool("content_tracker", output));
+    expect(h[0].title).toBe("0 posts tracked");
+  });
+
+  it("brief_generated with campaign name fallback", () => {
+    const output = { campaign: "Winter Launch" };
+    const h = extractHighlights(singleTool("brief_generator", output));
+    expect(h[0].subtitle).toBe("Winter Launch");
+  });
+
+  it("relationship_insight — ambassador_identifier", () => {
+    const output = { candidates: [{ id: "c1" }, { id: "c2" }] };
+    const h = extractHighlights(singleTool("ambassador_identifier", output));
+    expect(h[0].kind).toBe("relationship_insight");
+    expect(h[0].title).toBe("Ambassador candidates");
+    expect(h[0].subtitle).toBe("2 creators");
+  });
+
+  it("relationship_insight — churn_predictor", () => {
+    const output = { creators: [{ id: "c1" }] };
+    const h = extractHighlights(singleTool("churn_predictor", output));
+    expect(h[0].title).toBe("Churn risk analysis");
+    expect(h[0].subtitle).toBe("1 creator");
+  });
+
+  it("relationship_insight — reengagement_recommender", () => {
+    const output = { creators: [{ id: "c1" }, { id: "c2" }, { id: "c3" }] };
+    const h = extractHighlights(singleTool("reengagement_recommender", output));
+    expect(h[0].title).toBe("Re-engagement targets");
+    expect(h[0].subtitle).toBe("3 creators");
+  });
+
+  it("relationship_insight — relationship_scorer with no creators", () => {
+    const output = { score: 0.8 };
+    const h = extractHighlights(singleTool("relationship_scorer", output));
+    expect(h[0].title).toBe("Relationship score");
+    expect(h[0].subtitle).toBeUndefined();
+  });
+
+  it("creator_profile with no handle", () => {
+    const output = { creator: { display_name: "No Handle Creator", niche: "fitness" } };
+    const h = extractHighlights(singleTool("get_creator_details", output));
+    expect(h[0].title).toBe("Creator profile");
+    expect(h[0].subtitle).toBe("No Handle Creator");
+  });
+
+  it("creator_profile with niche fallback subtitle", () => {
+    const output = { creator: { handle: "test", niche: "beauty" } };
+    const h = extractHighlights(singleTool("get_creator_details", output));
+    expect(h[0].subtitle).toBe("beauty");
+  });
+
+  it("creators_found without total_in_database", () => {
+    const output = { results: [{ handle: "a" }], count: 1 };
+    const h = extractHighlights(singleTool("creator_search", output));
+    expect(h[0].subtitle).toBeUndefined();
+  });
+
+  it("warm_lead_detector maps to creators_found", () => {
+    const output = { results: [{ handle: "warm1" }], count: 1 };
+    const h = extractHighlights(singleTool("warm_lead_detector", output));
+    expect(h[0].kind).toBe("creators_found");
+    expect(h[0].title).toBe("Found 1 warm leads");
+  });
+
+  it("competitor_mapper maps to creators_found", () => {
+    const output = { results: [], count: 0 };
+    const h = extractHighlights(singleTool("competitor_mapper", output));
+    expect(h[0].kind).toBe("creators_found");
+    expect(h[0].title).toBe("Found 0 competitor creators");
+  });
+
+  it("geo_opportunity_finder maps to creators_found", () => {
+    const output = { results: [], count: 0 };
+    const h = extractHighlights(singleTool("geo_opportunity_finder", output));
+    expect(h[0].title).toBe("Found 0 geo opportunities");
+  });
+
+  it("audience_overlap_check maps to creators_found", () => {
+    const output = { results: [], count: 0 };
+    const h = extractHighlights(singleTool("audience_overlap_check", output));
+    expect(h[0].title).toBe("Found 0 overlap matches");
+  });
+
+  it("approval_pending label from generic tool", () => {
+    const output = { approval_id: "ap-1", status: "pending", message: "Custom message" };
+    const h = extractHighlights(singleTool("brief_generator", output));
+    expect(h[0].kind).toBe("approval_pending");
+    expect(h[0].title).toBe("Awaiting approval");
+    expect(h[0].subtitle).toBe("Custom message");
+  });
+
+  it("approval_pending with no message", () => {
+    const output = { approval_id: "ap-1", status: "pending" };
+    const h = extractHighlights(singleTool("brief_generator", output));
+    expect(h[0].subtitle).toBe("Review in Approvals");
+  });
+
+  it("generic tool message subtitle truncation", () => {
+    const longMsg = "A".repeat(100);
+    const output = { message: longMsg };
+    const h = extractHighlights(singleTool("unknown_tool_xyz", output));
+    expect(h[0].kind).toBe("generic");
+    expect(h[0].subtitle?.length).toBe(80);
+  });
+
+  it("skips parts with no toolCallId", () => {
+    const msgs: UIMessage[] = [{
+      id: "msg-1",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "hello" },
+      ] as never,
+    }];
+    expect(extractHighlights(msgs)).toHaveLength(0);
+  });
+
+  it("skips parts with no output", () => {
+    const msgs: UIMessage[] = [{
+      id: "msg-1",
+      role: "assistant",
+      parts: [{
+        type: "tool-creator_search",
+        toolCallId: "tc-1",
+        toolName: "creator_search",
+        state: "output-available",
+        // no output field
+      }] as never,
+    }];
+    expect(extractHighlights(msgs)).toHaveLength(0);
+  });
+
+  it("handles multiple messages with multiple tool parts", () => {
+    const msgs: UIMessage[] = [
+      makeToolMessage([
+        { toolCallId: "tc-1", toolName: "creator_search", output: { results: [], count: 0 } },
+      ]),
+      makeToolMessage([
+        { toolCallId: "tc-2", toolName: "outreach_drafter", output: { subject: "Hi", creator_handle: "test" } },
+        { toolCallId: "tc-3", toolName: "roi_calculator", output: { campaign: "Test", kpis: { roi: 1.5 } } },
+      ]),
+    ];
+    const h = extractHighlights(msgs);
+    expect(h).toHaveLength(3);
+    // Newest first
+    expect(h[0].toolName).toBe("roi_calculator");
+    expect(h[1].toolName).toBe("outreach_drafter");
+    expect(h[2].toolName).toBe("creator_search");
+  });
+
+  it("handles dynamic-tool type with toolName field", () => {
+    const msgs: UIMessage[] = [{
+      id: "msg-1",
+      role: "assistant",
+      parts: [{
+        type: "dynamic-tool",
+        toolCallId: "tc-dyn",
+        toolName: "creator_search",
+        state: "output-available",
+        output: { results: [{ handle: "dyn_handle" }], count: 1 },
+      }] as never,
+    }];
+    const h = extractHighlights(msgs);
+    expect(h).toHaveLength(1);
+    expect(h[0].toolName).toBe("creator_search");
+  });
+});
+
 /* ── collectHandles (tested indirectly) ──────────────────── */
 
 describe("handle collection from tool output", () => {

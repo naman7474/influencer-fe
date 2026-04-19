@@ -239,4 +239,171 @@ describe("outreach_drafter", () => {
     const insertedRow = insertSpy.mock.calls[0][0];
     expect(insertedRow.campaign_id).toBe("campaign-1");
   });
+
+  it("uses fallback template when no template_id or default found", async () => {
+    const insertSpy = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        single: vi.fn().mockReturnValue({
+          then: (resolve: (v: unknown) => void) =>
+            resolve({ data: { id: "draft-3" }, error: null }),
+        }),
+      }),
+    });
+
+    let callCount = 0;
+    const supabase = {
+      from: vi.fn((table: string) => {
+        callCount++;
+        if (callCount === 1) return mockQueryBuilder([creatorLb]);
+        if (callCount === 2) return mockQueryBuilder([creatorFull]);
+        if (callCount === 3) return mockQueryBuilder([brand]);
+        if (callCount === 4) return mockQueryBuilder(null); // caption_intelligence
+        if (callCount === 5) return mockQueryBuilder([]); // posts
+        if (callCount === 6) return mockQueryBuilder(null); // outreach_templates — no default
+        if (table === "outreach_messages") {
+          return { insert: insertSpy };
+        }
+        return mockQueryBuilder([]);
+      }),
+    } as never;
+
+    const tool = outreachDrafterTool("brand-1", supabase);
+    const result = await tool.execute(
+      { creator_id: "creator-1" },
+      toolCtx
+    );
+
+    const res = result as Record<string, unknown>;
+    expect(res.draft_id).toBe("draft-3");
+    expect(res.template_used).toBe("auto-generated");
+    // Should contain subject with brand name and handle
+    expect(res.subject).toContain("FitBar");
+    expect(res.subject).toContain("fit_priya");
+    // Body should contain creator first name
+    expect(res.body).toContain("Priya");
+    // Without campaign, uses generic message
+    expect(res.body).toContain("your content would resonate");
+  });
+
+  it("uses template when template_id is provided", async () => {
+    const templateRow = {
+      id: "tmpl-1",
+      name: "Custom Template",
+      subject: "Hey {{creator_first_name}} — collab with {{brand_name}}?",
+      body: "Hi {{creator_first_name}},\n\nWe love your {{creator_niche}} content!",
+    };
+
+    const insertSpy = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        single: vi.fn().mockReturnValue({
+          then: (resolve: (v: unknown) => void) =>
+            resolve({ data: { id: "draft-4" }, error: null }),
+        }),
+      }),
+    });
+
+    let callCount = 0;
+    const supabase = {
+      from: vi.fn((table: string) => {
+        callCount++;
+        if (callCount === 1) return mockQueryBuilder([creatorLb]);
+        if (callCount === 2) return mockQueryBuilder([creatorFull]);
+        if (callCount === 3) return mockQueryBuilder([brand]);
+        if (callCount === 4) return mockQueryBuilder(null); // caption_intelligence
+        if (callCount === 5) return mockQueryBuilder([]); // posts
+        if (callCount === 6 && table === "outreach_templates")
+          return mockQueryBuilder([templateRow]);
+        if (table === "outreach_messages") {
+          return { insert: insertSpy };
+        }
+        return mockQueryBuilder([]);
+      }),
+    } as never;
+
+    const tool = outreachDrafterTool("brand-1", supabase);
+    const result = await tool.execute(
+      { creator_id: "creator-1", template_id: "tmpl-1" },
+      toolCtx
+    );
+
+    const res = result as Record<string, unknown>;
+    expect(res.draft_id).toBe("draft-4");
+    expect(res.template_used).toBe("Custom Template");
+  });
+
+  it("returns error when draft insert fails", async () => {
+    const insertSpy = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        single: vi.fn().mockReturnValue({
+          then: (resolve: (v: unknown) => void) =>
+            resolve({ data: null, error: { message: "FK constraint violated" } }),
+        }),
+      }),
+    });
+
+    let callCount = 0;
+    const supabase = {
+      from: vi.fn((table: string) => {
+        callCount++;
+        if (callCount === 1) return mockQueryBuilder([creatorLb]);
+        if (callCount === 2) return mockQueryBuilder([creatorFull]);
+        if (callCount === 3) return mockQueryBuilder([brand]);
+        if (callCount === 4) return mockQueryBuilder(null);
+        if (callCount === 5) return mockQueryBuilder([]);
+        if (callCount === 6) return mockQueryBuilder(null);
+        if (table === "outreach_messages") {
+          return { insert: insertSpy };
+        }
+        return mockQueryBuilder([]);
+      }),
+    } as never;
+
+    const tool = outreachDrafterTool("brand-1", supabase);
+    const result = await tool.execute(
+      { creator_id: "creator-1" },
+      toolCtx
+    );
+
+    const res = result as { error: string };
+    expect(res.error).toContain("Failed to save draft");
+    expect(res.error).toContain("FK constraint violated");
+  });
+
+  it("includes campaign name in fallback body when campaign exists", async () => {
+    const insertSpy = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        single: vi.fn().mockReturnValue({
+          then: (resolve: (v: unknown) => void) =>
+            resolve({ data: { id: "draft-5" }, error: null }),
+        }),
+      }),
+    });
+
+    let callCount = 0;
+    const supabase = {
+      from: vi.fn((table: string) => {
+        callCount++;
+        if (callCount === 1) return mockQueryBuilder([creatorLb]);
+        if (callCount === 2) return mockQueryBuilder([creatorFull]);
+        if (callCount === 3) return mockQueryBuilder([brand]);
+        if (callCount === 4 && table === "campaigns") return mockQueryBuilder([campaign]);
+        if (callCount === 5) return mockQueryBuilder(null);
+        if (callCount === 6) return mockQueryBuilder([]);
+        if (callCount === 7) return mockQueryBuilder(null); // no template
+        if (table === "outreach_messages") {
+          return { insert: insertSpy };
+        }
+        return mockQueryBuilder([]);
+      }),
+    } as never;
+
+    const tool = outreachDrafterTool("brand-1", supabase);
+    const result = await tool.execute(
+      { creator_id: "creator-1", campaign_id: "campaign-1" },
+      toolCtx
+    );
+
+    const res = result as Record<string, unknown>;
+    expect(res.body).toContain("Summer Drop");
+  });
 });

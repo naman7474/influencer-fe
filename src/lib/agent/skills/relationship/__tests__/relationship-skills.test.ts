@@ -72,6 +72,165 @@ describe("relationship-scorer", () => {
     expect(result.relationship_score).toBe(0);
   });
 
+  it("returns error when creator not found", async () => {
+    const supabase = {
+      from: vi.fn(() => mockQueryBuilder([])),
+    } as unknown as SupabaseParam;
+
+    const t = relationshipScorerTool(brandId, supabase);
+    const result = (await t.execute(
+      { creator_id: "c-missing" },
+      execOpts
+    )) as { error: string };
+    expect(result.error).toBe("Creator not found");
+  });
+
+  it("scores a developing relationship (40-60)", async () => {
+    const date90 = new Date();
+    date90.setDate(date90.getDate() - 65); // 65 days ago → recency 20
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "mv_creator_relationship_summary") {
+          return mockQueryBuilder([
+            {
+              creator_id: "c1",
+              total_campaigns: 2, // loyalty = 2/5 * 25 = 10
+              total_spend: 50000,
+              total_revenue: 100000,
+              reply_count: 1, // response = min(1/2 * 15, 20) = 7.5
+              lifetime_roi: 2.0, // roiScore = 25
+              last_campaign_completed: date90.toISOString(),
+            },
+          ]);
+        }
+        if (table === "mv_creator_leaderboard") {
+          return mockQueryBuilder([
+            { creator_id: "c1", handle: "@dev", display_name: "Dev", tier: "micro", followers: 20000, cpi: 60 },
+          ]);
+        }
+        return mockQueryBuilder([]);
+      }),
+    } as unknown as SupabaseParam;
+
+    const t = relationshipScorerTool(brandId, supabase);
+    const result = (await t.execute(
+      { creator_id: "c1" },
+      execOpts
+    )) as { status: string; relationship_score: number };
+    // loyalty 10, roi 25, response ~7.5, recency 20 = ~62
+    expect(["strong", "developing"]).toContain(result.status);
+  });
+
+  it("scores at_risk relationship (20-40)", async () => {
+    const oldDate = new Date();
+    oldDate.setDate(oldDate.getDate() - 200); // 200 days → recency 5
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "mv_creator_relationship_summary") {
+          return mockQueryBuilder([
+            {
+              creator_id: "c1",
+              total_campaigns: 1, // loyalty = 1/5 * 25 = 5
+              total_spend: 10000,
+              total_revenue: 5000,
+              reply_count: 0, // response = 0
+              lifetime_roi: 0.5, // roiScore = 5
+              last_campaign_completed: oldDate.toISOString(),
+            },
+          ]);
+        }
+        if (table === "mv_creator_leaderboard") {
+          return mockQueryBuilder([
+            { creator_id: "c1", handle: "@cold", display_name: "Cold", tier: "nano", followers: 5000, cpi: 30 },
+          ]);
+        }
+        return mockQueryBuilder([]);
+      }),
+    } as unknown as SupabaseParam;
+
+    const t = relationshipScorerTool(brandId, supabase);
+    const result = (await t.execute(
+      { creator_id: "c1" },
+      execOpts
+    )) as { status: string; relationship_score: number };
+    // 5 + 5 + 0 + 5 = 15 → cold
+    expect(result.status).toBe("cold");
+  });
+
+  it("handles null values in relationship data", async () => {
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "mv_creator_relationship_summary") {
+          return mockQueryBuilder([
+            {
+              creator_id: "c1",
+              total_campaigns: null,
+              total_spend: null,
+              total_revenue: null,
+              reply_count: null,
+              lifetime_roi: null,
+              last_campaign_completed: null,
+            },
+          ]);
+        }
+        if (table === "mv_creator_leaderboard") {
+          return mockQueryBuilder([
+            { creator_id: "c1", handle: "@null", display_name: "Null", tier: "nano", followers: 1000, cpi: 20 },
+          ]);
+        }
+        return mockQueryBuilder([]);
+      }),
+    } as unknown as SupabaseParam;
+
+    const t = relationshipScorerTool(brandId, supabase);
+    const result = (await t.execute(
+      { creator_id: "c1" },
+      execOpts
+    )) as { status: string; relationship_score: number; breakdown: Record<string, number> };
+    // All zeros + roi 5 = cold
+    expect(result.relationship_score).toBeLessThanOrEqual(20);
+    expect(result.breakdown.loyalty).toBe(0);
+    expect(result.breakdown.recency).toBe(0);
+  });
+
+  it("caps recency at 90 day bracket", async () => {
+    const date100 = new Date();
+    date100.setDate(date100.getDate() - 100); // 90-180 → recency 10
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "mv_creator_relationship_summary") {
+          return mockQueryBuilder([
+            {
+              creator_id: "c1",
+              total_campaigns: 5,
+              total_spend: 100000,
+              total_revenue: 300000,
+              reply_count: 5,
+              lifetime_roi: 3.0,
+              last_campaign_completed: date100.toISOString(),
+            },
+          ]);
+        }
+        if (table === "mv_creator_leaderboard") {
+          return mockQueryBuilder([
+            { creator_id: "c1", handle: "@mid_rec", display_name: "Mid", tier: "mid", followers: 50000, cpi: 70 },
+          ]);
+        }
+        return mockQueryBuilder([]);
+      }),
+    } as unknown as SupabaseParam;
+
+    const t = relationshipScorerTool(brandId, supabase);
+    const result = (await t.execute(
+      { creator_id: "c1" },
+      execOpts
+    )) as { breakdown: Record<string, number> };
+    expect(result.breakdown.recency).toBe(10); // 90-180 day bracket
+  });
+
   it("scores a strong relationship correctly", async () => {
     const recentDate = new Date();
     recentDate.setDate(recentDate.getDate() - 15); // 15 days ago
@@ -313,6 +472,93 @@ describe("churn-predictor", () => {
     };
     expect(result.count).toBe(0);
     expect(result.message).toContain("healthy");
+  });
+
+  it("returns no results when no relationships exist", async () => {
+    const supabase = {
+      from: vi.fn(() => mockQueryBuilder([])),
+    } as unknown as SupabaseParam;
+
+    const t = churnPredictorTool(brandId, supabase);
+    const result = (await t.execute({ limit: 10 }, execOpts)) as {
+      count: number;
+      message: string;
+    };
+    expect(result.count).toBe(0);
+    expect(result.message).toContain("No creator relationships");
+  });
+
+  it("detects medium churn risk (40-59)", async () => {
+    const date100 = new Date();
+    date100.setDate(date100.getDate() - 100); // 91+ days → 20 points
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "mv_creator_relationship_summary") {
+          return mockQueryBuilder([
+            {
+              creator_id: "c1",
+              total_campaigns: 3,
+              lifetime_roi: 1.2, // below 1.5 with 3+ campaigns → 15 points
+              last_campaign_completed: date100.toISOString(),
+              reply_count: 1, // 1/3 = 0.33 < 0.5 → 20 points
+              total_spend: 50000,
+            },
+          ]);
+        }
+        if (table === "mv_creator_leaderboard") {
+          return mockQueryBuilder([
+            { creator_id: "c1", handle: "@med_risk", display_name: "Med", tier: "micro", followers: 15000, cpi: 50 },
+          ]);
+        }
+        return mockQueryBuilder([]);
+      }),
+    } as unknown as SupabaseParam;
+
+    const t = churnPredictorTool(brandId, supabase);
+    const result = (await t.execute({ limit: 10 }, execOpts)) as {
+      results: { churn_risk: { score: number; level: string; signals: string[] } }[];
+      risk_distribution: { high: number; medium: number; low: number };
+    };
+
+    expect(result.results[0].churn_risk.level).toBe("medium");
+    expect(result.results[0].churn_risk.signals.length).toBeGreaterThan(0);
+    expect(result.risk_distribution.medium).toBe(1);
+  });
+
+  it("detects single-campaign poor performer signal", async () => {
+    const date200 = new Date();
+    date200.setDate(date200.getDate() - 200);
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "mv_creator_relationship_summary") {
+          return mockQueryBuilder([
+            {
+              creator_id: "c1",
+              total_campaigns: 1,
+              lifetime_roi: 0.3, // < 1 with 1 campaign → 15 + 25 (since also < 1 with >= 2 no, but >= 1 yes)
+              last_campaign_completed: date200.toISOString(),
+              reply_count: 0,
+              total_spend: 20000,
+            },
+          ]);
+        }
+        if (table === "mv_creator_leaderboard") {
+          return mockQueryBuilder([]);
+        }
+        return mockQueryBuilder([]);
+      }),
+    } as unknown as SupabaseParam;
+
+    const t = churnPredictorTool(brandId, supabase);
+    const result = (await t.execute({ limit: 10 }, execOpts)) as {
+      results: { handle: string; churn_risk: { signals: string[]; level: string }; recommendation: string }[];
+    };
+
+    expect(result.results[0].churn_risk.signals).toContain("Single campaign with poor results");
+    expect(result.results[0].handle).toBe("c1"); // Falls back to creator_id
+    expect(result.results[0].recommendation).toContain("Urgent");
   });
 
   it("identifies at-risk creators", async () => {

@@ -53,6 +53,18 @@
   --color-info: var(--info);
   --color-indigo: var(--indigo);
   --color-indigo-soft: var(--indigo-soft);
+
+  /* Agent design system */
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-fg-dim: var(--fg-dim);
+  --color-fg-faint: var(--fg-faint);
+  --color-border-strong: var(--border-strong);
+  --color-amber: var(--amber);
+  --color-amber-soft: var(--amber-soft);
+  --color-success-soft: var(--success-soft);
+  --color-danger-soft: var(--danger-soft);
+  --color-accent-fg: var(--accent-fg);
 }
 
 :root {
@@ -82,6 +94,19 @@
   --info: #3B82F6;
   --indigo: #6366F1;
   --indigo-soft: #EEF2FF;
+
+  /* Agent design system */
+  --surface-2: #F6F7F9;
+  --surface-3: #F0F2F5;
+  --fg-dim: #6B7280;
+  --fg-faint: #9AA1AB;
+  --border-strong: #D1D5DB;
+  --amber: #B45309;
+  --amber-soft: #FEF3C7;
+  --success-soft: #ECFDF5;
+  --danger: #B91C1C;
+  --danger-soft: #FEF2F2;
+  --accent-fg: #4338CA;
 
   /* Chart palette */
   --chart-1: #6366F1;
@@ -135,6 +160,19 @@
   --info: #3B82F6;
   --indigo: #818CF8;
   --indigo-soft: rgba(129, 140, 248, 0.15);
+
+  /* Agent design system (dark) */
+  --surface-2: #161924;
+  --surface-3: #1B1F2B;
+  --fg-dim: #8A93A3;
+  --fg-faint: #5B6375;
+  --border-strong: #30364A;
+  --amber: #F59E0B;
+  --amber-soft: rgba(245, 158, 11, 0.12);
+  --success-soft: rgba(16, 185, 129, 0.12);
+  --danger: #F87171;
+  --danger-soft: rgba(239, 68, 68, 0.12);
+  --accent-fg: #A5B0FF;
 
   --chart-1: #818CF8;
   --chart-2: #10B981;
@@ -196,4 +234,65 @@
 .font-handle {
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 13px;
+}
+
+/* ── Agent chat redesign utilities ── */
+
+.assistant-block {
+  border-left: 2px solid transparent;
+  padding-left: 14px;
+  transition: border-color 0.2s ease;
+}
+.assistant-block.is-active {
+  border-left-color: var(--primary);
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 50%, var(--surface-2) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+@keyframes caret-blink {
+  50% { opacity: 0; }
+}
+.thinking-cursor::after {
+  content: "\25CD";
+  margin-left: 2px;
+  animation: caret-blink 1s steps(1) infinite;
+  color: var(--fg-faint);
+}
+
+@keyframes canvas-slide-in {
+  from { transform: translateX(16px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.canvas-enter {
+  animation: canvas-slide-in 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@keyframes dot-pulse {
+  0%, 80%, 100% { opacity: 0.2; }
+  40% { opacity: 1; }
+}
+.dot-pulse {
+  animation: dot-pulse 1.2s infinite;
+}
+.dot-pulse:nth-child(2) { animation-delay: 0.15s; }
+.dot-pulse:nth-child(3) { animation-delay: 0.3s; }
+
+/* Agent scrollbar */
+.agent-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.agent-scroll::-webkit-scrollbar-track { background: transparent; }
+.agent-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; border: 2px solid var(--background); }
+.agent-scroll::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+
+/* Focus ring for agent input */
+.agent-ring:focus-within {
+  box-shadow: 0 0 0 3px var(--indigo-soft);
+  border-color: var(--primary) !important;
 }

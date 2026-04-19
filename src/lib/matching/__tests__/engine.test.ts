@@ -8,7 +8,13 @@ import {
   computeCompetitorBonus,
   computeAudienceGeo,
   normalizeGeoRegions,
+  cosineSimilarity,
+  computeSemanticSimilarity,
+  computePastCollabSimilarity,
+  computeThemeOverlapBonus,
+  computeCollabNetworkBonus,
   TIER_RATES,
+  NICHE_ADJACENCY,
 } from "../engine";
 import type { BrandShopifyGeo, CreatorTier, ContentFormat } from "@/lib/types/database";
 
@@ -540,5 +546,760 @@ describe("TIER_RATES", () => {
         TIER_RATES[ordered[i + 1]][0]
       );
     }
+  });
+});
+
+// ── NICHE_ADJACENCY constant validation ─────────────────────────────
+
+describe("NICHE_ADJACENCY", () => {
+  it("has adjacencies defined for key niches", () => {
+    const expectedNiches = [
+      "beauty",
+      "fitness",
+      "food",
+      "tech",
+      "fashion",
+      "wellness",
+      "skincare",
+      "lifestyle",
+    ];
+    for (const niche of expectedNiches) {
+      expect(NICHE_ADJACENCY[niche]).toBeDefined();
+      expect(NICHE_ADJACENCY[niche].length).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ── cosineSimilarity ────────────────────────────────────────────────
+
+describe("cosineSimilarity", () => {
+  it("returns 1.0 (mapped) for identical vectors", () => {
+    const v = [1, 0, 0];
+    // cosine of identical vectors is 1, mapped to (1+1)/2 = 1.0
+    expect(cosineSimilarity(v, v)).toBeCloseTo(1.0, 5);
+  });
+
+  it("returns 0.5 (mapped) for orthogonal vectors", () => {
+    const a = [1, 0, 0];
+    const b = [0, 1, 0];
+    // cosine is 0, mapped to (0+1)/2 = 0.5
+    expect(cosineSimilarity(a, b)).toBeCloseTo(0.5, 5);
+  });
+
+  it("returns 0.0 (mapped) for opposite vectors", () => {
+    const a = [1, 0, 0];
+    const b = [-1, 0, 0];
+    // cosine is -1, mapped to (-1+1)/2 = 0
+    expect(cosineSimilarity(a, b)).toBeCloseTo(0.0, 5);
+  });
+
+  it("returns 0 when either vector is null", () => {
+    expect(cosineSimilarity(null, [1, 2, 3])).toBe(0);
+    expect(cosineSimilarity([1, 2, 3], null)).toBe(0);
+    expect(cosineSimilarity(null, null)).toBe(0);
+  });
+
+  it("returns 0 when either vector is undefined", () => {
+    expect(cosineSimilarity(undefined, [1, 2, 3])).toBe(0);
+    expect(cosineSimilarity([1, 2, 3], undefined)).toBe(0);
+  });
+
+  it("returns 0 when vectors have different lengths", () => {
+    expect(cosineSimilarity([1, 2], [1, 2, 3])).toBe(0);
+  });
+
+  it("returns 0 when vectors are empty", () => {
+    expect(cosineSimilarity([], [])).toBe(0);
+  });
+
+  it("returns 0 when a vector is all zeros", () => {
+    expect(cosineSimilarity([0, 0, 0], [1, 2, 3])).toBe(0);
+    expect(cosineSimilarity([1, 2, 3], [0, 0, 0])).toBe(0);
+  });
+
+  it("handles multi-dimensional vectors correctly", () => {
+    const a = [0.5, 0.5, 0.5, 0.5];
+    const b = [0.5, 0.5, 0.5, 0.5];
+    expect(cosineSimilarity(a, b)).toBeCloseTo(1.0, 5);
+  });
+});
+
+// ── computeSemanticSimilarity ───────────────────────────────────────
+
+describe("computeSemanticSimilarity", () => {
+  it("delegates to cosineSimilarity", () => {
+    const a = [1, 0, 0];
+    const b = [1, 0, 0];
+    expect(computeSemanticSimilarity(a, b)).toBe(cosineSimilarity(a, b));
+  });
+
+  it("returns 0 when brand embedding is null", () => {
+    expect(computeSemanticSimilarity(null, [1, 2, 3])).toBe(0);
+  });
+
+  it("returns 0 when creator embedding is null", () => {
+    expect(computeSemanticSimilarity([1, 2, 3], null)).toBe(0);
+  });
+});
+
+// ── computePastCollabSimilarity ─────────────────────────────────────
+
+describe("computePastCollabSimilarity", () => {
+  it("returns 0 when creator embedding is null", () => {
+    expect(computePastCollabSimilarity(null, [[1, 0, 0]])).toBe(0);
+  });
+
+  it("returns 0 when no past collaborator embeddings", () => {
+    expect(computePastCollabSimilarity([1, 0, 0], [])).toBe(0);
+  });
+
+  it("returns max similarity across all collaborators", () => {
+    const creator = [1, 0, 0];
+    const collabs = [
+      [0, 1, 0], // orthogonal -> 0.5
+      [1, 0, 0], // identical -> 1.0
+      [0, 0, 1], // orthogonal -> 0.5
+    ];
+    expect(computePastCollabSimilarity(creator, collabs)).toBeCloseTo(1.0, 5);
+  });
+
+  it("skips null embeddings in collaborator list", () => {
+    const creator = [1, 0, 0];
+    const collabs: (number[] | null)[] = [null, [1, 0, 0], null];
+    expect(computePastCollabSimilarity(creator, collabs)).toBeCloseTo(1.0, 5);
+  });
+
+  it("returns 0 when all collaborator embeddings are null", () => {
+    const creator = [1, 0, 0];
+    const collabs: (number[] | null)[] = [null, null];
+    expect(computePastCollabSimilarity(creator, collabs)).toBe(0);
+  });
+});
+
+// ── computeThemeOverlapBonus ────────────────────────────────────────
+
+describe("computeThemeOverlapBonus", () => {
+  it("returns 1.0 when brand topics are null", () => {
+    expect(computeThemeOverlapBonus(null, ["topic1"])).toBe(1.0);
+  });
+
+  it("returns 1.0 when creator topics are null", () => {
+    expect(computeThemeOverlapBonus(["topic1"], null)).toBe(1.0);
+  });
+
+  it("returns 1.0 when both are empty", () => {
+    expect(computeThemeOverlapBonus([], [])).toBe(1.0);
+  });
+
+  it("returns > 1.0 when there is topic overlap", () => {
+    const result = computeThemeOverlapBonus(
+      ["morning routines", "protein recipes"],
+      ["morning routines", "gym tips"]
+    );
+    expect(result).toBeGreaterThan(1.0);
+    expect(result).toBeLessThanOrEqual(1.1);
+  });
+
+  it("returns maximum 1.10 for perfect overlap", () => {
+    const topics = ["topic1", "topic2", "topic3"];
+    const result = computeThemeOverlapBonus(topics, topics);
+    expect(result).toBeCloseTo(1.1, 5);
+  });
+
+  it("is case-insensitive", () => {
+    const result = computeThemeOverlapBonus(
+      ["Morning Routines"],
+      ["morning routines"]
+    );
+    expect(result).toBeGreaterThan(1.0);
+  });
+
+  it("returns 1.0 when no overlap", () => {
+    const result = computeThemeOverlapBonus(
+      ["cooking", "recipes"],
+      ["tech", "gadgets"]
+    );
+    expect(result).toBe(1.0);
+  });
+});
+
+// ── computeCollabNetworkBonus ───────────────────────────────────────
+
+describe("computeCollabNetworkBonus", () => {
+  it("returns 1.15 when creator handle is in brand collaborators", () => {
+    expect(
+      computeCollabNetworkBonus("beauty_queen", ["beauty_queen", "fitness_pro"])
+    ).toBe(1.15);
+  });
+
+  it("is case-insensitive", () => {
+    expect(
+      computeCollabNetworkBonus("Beauty_Queen", ["beauty_queen"])
+    ).toBe(1.15);
+  });
+
+  it("strips @ prefix", () => {
+    expect(
+      computeCollabNetworkBonus("@beauty_queen", ["@beauty_queen"])
+    ).toBe(1.15);
+    expect(
+      computeCollabNetworkBonus("beauty_queen", ["@beauty_queen"])
+    ).toBe(1.15);
+    expect(
+      computeCollabNetworkBonus("@beauty_queen", ["beauty_queen"])
+    ).toBe(1.15);
+  });
+
+  it("returns 1.0 when creator handle is null", () => {
+    expect(computeCollabNetworkBonus(null, ["beauty_queen"])).toBe(1.0);
+  });
+
+  it("returns 1.0 when collaborators list is null", () => {
+    expect(computeCollabNetworkBonus("beauty_queen", null)).toBe(1.0);
+  });
+
+  it("returns 1.0 when collaborators list is empty", () => {
+    expect(computeCollabNetworkBonus("beauty_queen", [])).toBe(1.0);
+  });
+
+  it("returns 1.0 when creator is not in collaborators", () => {
+    expect(
+      computeCollabNetworkBonus("new_creator", ["beauty_queen", "fitness_pro"])
+    ).toBe(1.0);
+  });
+
+  it("returns 1.0 when creator handle is undefined", () => {
+    expect(computeCollabNetworkBonus(undefined, ["a"])).toBe(1.0);
+  });
+});
+
+// ── normalizeGeoRegions additional edge cases ───────────────────────
+
+describe("normalizeGeoRegions – additional edge cases", () => {
+  it("handles array items with pct field", () => {
+    const result = normalizeGeoRegions([
+      { region: "Delhi", pct: 0.35 },
+    ]);
+    expect(result).toEqual({ delhi: 0.35 });
+  });
+
+  it("handles array items with percentage > 1", () => {
+    const result = normalizeGeoRegions([
+      { region: "Mumbai", percentage: 55 },
+    ]);
+    expect(result).toEqual({ mumbai: 0.55 });
+  });
+
+  it("handles array items with country field instead of region", () => {
+    const result = normalizeGeoRegions([
+      { country: "India", confidence: 0.9 },
+    ]);
+    expect(result).toEqual({ india: 0.9 });
+  });
+
+  it("skips array items without region or country", () => {
+    const result = normalizeGeoRegions([
+      { confidence: 0.5 }, // no region or country
+    ]);
+    expect(result).toEqual({});
+  });
+
+  it("handles non-numeric values in object format", () => {
+    const result = normalizeGeoRegions({ india: "not a number" as any });
+    // non-numbers are skipped
+    expect(result).toEqual({});
+  });
+
+  it("returns empty object for string input", () => {
+    const result = normalizeGeoRegions("some string");
+    expect(result).toEqual({});
+  });
+
+  it("returns empty object for number input", () => {
+    const result = normalizeGeoRegions(42);
+    expect(result).toEqual({});
+  });
+});
+
+// ── computeAudienceGeo edge cases ───────────────────────────────────
+
+describe("computeAudienceGeo – additional edge cases", () => {
+  it("returns 0.3 when both creator regions and brand geo are empty", () => {
+    expect(computeAudienceGeo({}, [])).toBe(0.3);
+  });
+
+  it("returns 0.3 when brand geo has no gap or strong zones", () => {
+    const geoZones = [
+      makeGeoZone({ country: "india", problem_type: null }),
+    ];
+    expect(computeAudienceGeo({ india: 0.5 }, geoZones)).toBe(0.3);
+  });
+
+  it("handles mixed gap and strong zones", () => {
+    const geoZones = [
+      makeGeoZone({ state: "Maharashtra", problem_type: "awareness_gap", gap_score: 80 }),
+      makeGeoZone({ state: "Delhi", problem_type: "strong_market", gap_score: 20 }),
+    ];
+    const result = computeAudienceGeo(
+      { maharashtra: 0.5, delhi: 0.3 },
+      geoZones
+    );
+    // Should use 70/30 split between gap and strong scores
+    expect(result).toBeGreaterThan(0.3);
+    expect(result).toBeLessThanOrEqual(1.0);
+  });
+
+  it("handles gap zones with null gap_score (defaults to 50)", () => {
+    const geoZones = [
+      makeGeoZone({ state: "Maharashtra", problem_type: "awareness_gap", gap_score: null }),
+    ];
+    const result = computeAudienceGeo({ maharashtra: 0.5 }, geoZones);
+    expect(result).toBeGreaterThan(0.3);
+  });
+
+  it("never returns more than 1.0", () => {
+    const geoZones = [
+      makeGeoZone({ state: "Maharashtra", problem_type: "awareness_gap", gap_score: 100 }),
+    ];
+    const result = computeAudienceGeo({ maharashtra: 1.0 }, geoZones);
+    expect(result).toBeLessThanOrEqual(1.0);
+  });
+});
+
+// ── computeNicheFit additional edge cases ───────────────────────────
+
+describe("computeNicheFit – additional edge cases", () => {
+  it("handles whitespace in niche and categories", () => {
+    expect(computeNicheFit("  beauty  ", null, ["  beauty  "])).toBe(1.0);
+  });
+
+  it("handles case insensitivity for adjacency check", () => {
+    // "Beauty" -> "beauty" -> adjacent to ["skincare", "fashion", "lifestyle"]
+    expect(computeNicheFit("Beauty", null, ["Skincare"])).toBe(0.5);
+  });
+
+  it("returns 0.5 for secondary niche adjacency when primary has no adjacency hit", () => {
+    // "tech" is not adjacent to "health", but "food" is
+    expect(computeNicheFit("tech", "food", ["health"])).toBe(0.5);
+  });
+
+  it("returns 0 when niches have no adjacencies defined", () => {
+    expect(computeNicheFit("unknown_niche", null, ["other_category"])).toBe(0.0);
+  });
+});
+
+// ── computeBudgetFit additional edge cases ──────────────────────────
+
+describe("computeBudgetFit – additional edge cases", () => {
+  it("returns 1.0 when budget range equals tier range exactly", () => {
+    // nano: [1000, 5000]
+    expect(computeBudgetFit(1000, 5000, "nano")).toBe(1.0);
+  });
+
+  it("handles very large budget ranges", () => {
+    // Budget wider than any tier
+    const result = computeBudgetFit(0, 10000000, "nano");
+    expect(result).toBeGreaterThan(0);
+    expect(result).toBeLessThanOrEqual(1.0);
+  });
+});
+
+// ── computeFormatFit additional edge cases ──────────────────────────
+
+describe("computeFormatFit – additional edge cases", () => {
+  it("normalizes percentage values > 1 to 0-1 range", () => {
+    // totalProportion > 1, gets divided by 100
+    const result = computeFormatFit("reels", { video: 80, reels: 20 });
+    // video(80) + reels(20) = 100, /100 = 1.0
+    expect(result).toBe(1.0);
+  });
+
+  it("handles sidecar key for carousel format", () => {
+    const result = computeFormatFit("carousel", { sidecar: 0.4 });
+    expect(result).toBeCloseTo(0.4, 2);
+  });
+
+  it("sums multiple matching keys", () => {
+    // reels maps to ["video", "reels", "reel"]
+    const result = computeFormatFit("reels", { video: 0.3, reels: 0.2, reel: 0.1 });
+    expect(result).toBeCloseTo(0.6, 2);
+  });
+
+  it("handles case-insensitive content mix keys", () => {
+    const result = computeFormatFit("reels", { Video: 0.7 });
+    expect(result).toBeCloseTo(0.7, 2);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  computeMatchesForBrand (integration)                               */
+/* ------------------------------------------------------------------ */
+
+import { computeMatchesForBrand } from "../engine";
+
+function chainBuilder(data: unknown[] | null = [], error: unknown = null) {
+  let isSingle = false;
+  const builder: Record<string, unknown> = {};
+  const methods = [
+    "select", "eq", "neq", "in", "gte", "lte", "ilike", "or",
+    "order", "limit", "single",
+  ];
+  for (const m of methods) {
+    if (m === "single") {
+      builder[m] = vi.fn().mockImplementation(() => {
+        isSingle = true;
+        return builder;
+      });
+    } else {
+      builder[m] = vi.fn().mockReturnValue(builder);
+    }
+  }
+  builder.upsert = vi.fn().mockResolvedValue({ data: null, error: null });
+  builder.then = (resolve: (v: unknown) => void) => {
+    if (isSingle) {
+      const d = Array.isArray(data) && data.length > 0 ? data[0] : null;
+      resolve({ data: d, error });
+    } else {
+      resolve({ data, error });
+    }
+  };
+  return builder;
+}
+
+describe("computeMatchesForBrand", () => {
+  const brandRow = {
+    id: "brand-1",
+    brand_name: "FitBar",
+    product_categories: ["fitness", "health"],
+    content_format_pref: "reels",
+    budget_per_creator_min: 10000,
+    budget_per_creator_max: 50000,
+    shipping_zones: ["Mumbai", "Delhi"],
+    default_campaign_goal: "awareness",
+    competitor_brands: ["NutriBites"],
+    brand_voice_preference: null,
+    min_audience_age: null,
+    content_embedding: null,
+    ig_collaborators: null,
+    ig_content_dna: null,
+  };
+
+  const creatorRow = {
+    creator_id: "c1",
+    handle: "@fit_creator",
+    display_name: "Fit Creator",
+    followers: 50000,
+    tier: "mid" as const,
+    cpi: 80,
+    primary_niche: "fitness",
+    city: "Mumbai",
+    country: "India",
+    engagement_quality: 0.7,
+  };
+
+  it("computes matches for a brand and upserts them", async () => {
+    const upsertMock = vi.fn().mockResolvedValue({ data: null, error: null });
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "brands") return chainBuilder([brandRow]);
+        if (table === "brand_shopify_geo") return chainBuilder([]);
+        if (table === "mv_creator_leaderboard") return chainBuilder([creatorRow]);
+        if (table === "brand_guidelines") return chainBuilder([{ forbidden_topics: [] }]);
+        if (table === "caption_intelligence") return chainBuilder([{
+          creator_id: "c1",
+          primary_niche: "fitness",
+          secondary_niche: "health",
+          primary_tone: "energetic",
+          secondary_tone: null,
+          formality_score: 0.4,
+          engagement_bait_score: 0.1,
+          vulnerability_openness: 0.2,
+          recurring_topics: ["workout", "protein"],
+          brand_categories: ["fitness"],
+        }]);
+        if (table === "audience_intelligence") return chainBuilder([{
+          creator_id: "c1",
+          geo_regions: { India: 80, "United States": 20 },
+          authenticity_score: 0.9,
+          suspicious_patterns: [],
+          sentiment_score: 0.8,
+          negative_themes: [],
+          estimated_age_group: "25-34",
+        }]);
+        if (table === "creator_scores") return chainBuilder([{
+          creator_id: "c1",
+          engagement_quality: 0.75,
+          content_mix: { video: 0.6, reels: 0.3 },
+          brand_mentions: ["NutriBites"],
+          professionalism: 0.8,
+          content_quality: 0.7,
+          sponsored_post_rate: 0.2,
+          sponsored_vs_organic_delta: -0.1,
+          creator_reply_rate: 0.6,
+        }]);
+        if (table === "transcript_intelligence") return chainBuilder([{
+          creator_id: "c1",
+          primary_spoken_language: "Hindi",
+        }]);
+        if (table === "creator_brand_matches") {
+          const b = chainBuilder([]);
+          b.upsert = upsertMock;
+          return b;
+        }
+        return chainBuilder([]);
+      }),
+    } as never;
+
+    const count = await computeMatchesForBrand(supabase, "brand-1", 10);
+    expect(count).toBe(1);
+    expect(upsertMock).toHaveBeenCalledTimes(1);
+    const batch = upsertMock.mock.calls[0][0];
+    expect(batch).toHaveLength(1);
+    expect(batch[0].creator_id).toBe("c1");
+    expect(batch[0].brand_id).toBe("brand-1");
+    expect(batch[0].match_score).toBeGreaterThan(0);
+    expect(batch[0].match_reasoning).toContain("Score:");
+    expect(batch[0].mentions_competitor).toBe(true); // NutriBites in brand_mentions
+    expect(batch[0].used_ig_signals).toBe(false);
+  });
+
+  it("throws when brand not found", async () => {
+    const supabase = {
+      from: vi.fn(() => chainBuilder([], { message: "not found" })),
+    } as never;
+
+    await expect(computeMatchesForBrand(supabase, "bad-brand")).rejects.toThrow("Brand not found");
+  });
+
+  it("returns 0 when no creators in leaderboard", async () => {
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "brands") return chainBuilder([brandRow]);
+        if (table === "brand_shopify_geo") return chainBuilder([]);
+        if (table === "mv_creator_leaderboard") return chainBuilder([]);
+        return chainBuilder([]);
+      }),
+    } as never;
+
+    const count = await computeMatchesForBrand(supabase, "brand-1");
+    expect(count).toBe(0);
+  });
+
+  it("uses IG-enhanced scoring when brand has content_embedding", async () => {
+    const igBrand = {
+      ...brandRow,
+      content_embedding: [0.1, 0.2, 0.3],
+      ig_collaborators: ["@partner"],
+      ig_content_dna: { recurring_topics: ["fitness", "protein"] },
+    };
+
+    const upsertMock = vi.fn().mockResolvedValue({ data: null, error: null });
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "brands") return chainBuilder([igBrand]);
+        if (table === "brand_shopify_geo") return chainBuilder([]);
+        if (table === "mv_creator_leaderboard") return chainBuilder([creatorRow]);
+        if (table === "brand_guidelines") return chainBuilder([]);
+        if (table === "caption_intelligence") return chainBuilder([{
+          creator_id: "c1", primary_niche: "fitness", secondary_niche: null,
+          primary_tone: "energetic", secondary_tone: null, formality_score: 0.5,
+          engagement_bait_score: 0.1, vulnerability_openness: 0.2,
+          recurring_topics: ["fitness"], brand_categories: [],
+        }]);
+        if (table === "audience_intelligence") return chainBuilder([{
+          creator_id: "c1", geo_regions: {}, authenticity_score: 0.8,
+          suspicious_patterns: [], sentiment_score: 0.7, negative_themes: [],
+          estimated_age_group: "18-24",
+        }]);
+        if (table === "creator_scores") return chainBuilder([{
+          creator_id: "c1", engagement_quality: 0.7, content_mix: { video: 0.5 },
+          brand_mentions: [], professionalism: 0.7, content_quality: 0.6,
+          sponsored_post_rate: 0.1, sponsored_vs_organic_delta: 0,
+          creator_reply_rate: 0.5,
+        }]);
+        if (table === "transcript_intelligence") return chainBuilder([]);
+        if (table === "creators") return chainBuilder([{
+          id: "c1", content_embedding: [0.15, 0.25, 0.35],
+        }]);
+        if (table === "creator_brand_matches") {
+          const b = chainBuilder([]);
+          b.upsert = upsertMock;
+          return b;
+        }
+        return chainBuilder([]);
+      }),
+      rpc: vi.fn().mockResolvedValue({
+        data: [{ content_embedding: [0.1, 0.3, 0.2] }],
+      }),
+    } as never;
+
+    const count = await computeMatchesForBrand(supabase, "brand-1", 10);
+    expect(count).toBe(1);
+    const batch = upsertMock.mock.calls[0][0];
+    expect(batch[0].used_ig_signals).toBe(true);
+    expect(batch[0].match_score_breakdown.weights).toBe("with_ig");
+    expect(batch[0].match_score_breakdown.semantic_similarity).toBeGreaterThan(0);
+  });
+
+  it("handles 'All India' shipping zone", async () => {
+    const allIndiaBrand = {
+      ...brandRow,
+      shipping_zones: ["All India"],
+    };
+
+    const upsertMock = vi.fn().mockResolvedValue({ data: null, error: null });
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "brands") return chainBuilder([allIndiaBrand]);
+        if (table === "brand_shopify_geo") return chainBuilder([]);
+        if (table === "mv_creator_leaderboard") return chainBuilder([creatorRow]);
+        if (table === "brand_guidelines") return chainBuilder([]);
+        if (table === "caption_intelligence") return chainBuilder([]);
+        if (table === "audience_intelligence") return chainBuilder([]);
+        if (table === "creator_scores") return chainBuilder([]);
+        if (table === "transcript_intelligence") return chainBuilder([]);
+        if (table === "creator_brand_matches") {
+          const b = chainBuilder([]);
+          b.upsert = upsertMock;
+          return b;
+        }
+        return chainBuilder([]);
+      }),
+    } as never;
+
+    const count = await computeMatchesForBrand(supabase, "brand-1", 10);
+    expect(count).toBe(1);
+  });
+
+  it("throws on upsert error", async () => {
+    const upsertMock = vi.fn().mockResolvedValue({ data: null, error: { message: "upsert fail" } });
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "brands") return chainBuilder([brandRow]);
+        if (table === "brand_shopify_geo") return chainBuilder([]);
+        if (table === "mv_creator_leaderboard") return chainBuilder([creatorRow]);
+        if (table === "brand_guidelines") return chainBuilder([]);
+        if (table === "caption_intelligence") return chainBuilder([]);
+        if (table === "audience_intelligence") return chainBuilder([]);
+        if (table === "creator_scores") return chainBuilder([]);
+        if (table === "transcript_intelligence") return chainBuilder([]);
+        if (table === "creator_brand_matches") {
+          const b = chainBuilder([]);
+          b.upsert = upsertMock;
+          return b;
+        }
+        return chainBuilder([]);
+      }),
+    } as never;
+
+    await expect(computeMatchesForBrand(supabase, "brand-1", 10)).rejects.toThrow("Failed to upsert matches");
+  });
+
+  it("detects when creator already mentions the brand", async () => {
+    const upsertMock = vi.fn().mockResolvedValue({ data: null, error: null });
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "brands") return chainBuilder([brandRow]);
+        if (table === "brand_shopify_geo") return chainBuilder([]);
+        if (table === "mv_creator_leaderboard") return chainBuilder([creatorRow]);
+        if (table === "brand_guidelines") return chainBuilder([]);
+        if (table === "caption_intelligence") return chainBuilder([]);
+        if (table === "audience_intelligence") return chainBuilder([]);
+        if (table === "creator_scores") return chainBuilder([{
+          creator_id: "c1",
+          engagement_quality: 0.7,
+          content_mix: {},
+          brand_mentions: ["FitBar", "NutriBites"], // mentions brand itself + competitor
+          professionalism: 0.7,
+          content_quality: 0.6,
+          sponsored_post_rate: 0.1,
+          sponsored_vs_organic_delta: 0,
+          creator_reply_rate: 0.5,
+        }]);
+        if (table === "transcript_intelligence") return chainBuilder([]);
+        if (table === "creator_brand_matches") {
+          const b = chainBuilder([]);
+          b.upsert = upsertMock;
+          return b;
+        }
+        return chainBuilder([]);
+      }),
+    } as never;
+
+    await computeMatchesForBrand(supabase, "brand-1", 10);
+    const batch = upsertMock.mock.calls[0][0];
+    expect(batch[0].already_mentions_brand).toBe(true);
+    expect(batch[0].mentions_competitor).toBe(true);
+  });
+
+  it("handles batch upsert for many creators", async () => {
+    const manyCreators = Array.from({ length: 75 }, (_, i) => ({
+      ...creatorRow,
+      creator_id: `c${i}`,
+      handle: `@creator_${i}`,
+    }));
+
+    const upsertMock = vi.fn().mockResolvedValue({ data: null, error: null });
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "brands") return chainBuilder([brandRow]);
+        if (table === "brand_shopify_geo") return chainBuilder([]);
+        if (table === "mv_creator_leaderboard") return chainBuilder(manyCreators);
+        if (table === "brand_guidelines") return chainBuilder([]);
+        if (table === "caption_intelligence") return chainBuilder([]);
+        if (table === "audience_intelligence") return chainBuilder([]);
+        if (table === "creator_scores") return chainBuilder([]);
+        if (table === "transcript_intelligence") return chainBuilder([]);
+        if (table === "creator_brand_matches") {
+          const b = chainBuilder([]);
+          b.upsert = upsertMock;
+          return b;
+        }
+        return chainBuilder([]);
+      }),
+    } as never;
+
+    const count = await computeMatchesForBrand(supabase, "brand-1", 200);
+    expect(count).toBe(75);
+    // Should batch in groups of 50: 2 batches (50 + 25)
+    expect(upsertMock).toHaveBeenCalledTimes(2);
+    expect(upsertMock.mock.calls[0][0]).toHaveLength(50);
+    expect(upsertMock.mock.calls[1][0]).toHaveLength(25);
+  });
+
+  it("skips creators with null creator_id", async () => {
+    const upsertMock = vi.fn().mockResolvedValue({ data: null, error: null });
+    const creatorsWithNull = [
+      creatorRow,
+      { ...creatorRow, creator_id: null, handle: "@null" },
+    ];
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "brands") return chainBuilder([brandRow]);
+        if (table === "brand_shopify_geo") return chainBuilder([]);
+        if (table === "mv_creator_leaderboard") return chainBuilder(creatorsWithNull);
+        if (table === "brand_guidelines") return chainBuilder([]);
+        if (table === "caption_intelligence") return chainBuilder([]);
+        if (table === "audience_intelligence") return chainBuilder([]);
+        if (table === "creator_scores") return chainBuilder([]);
+        if (table === "transcript_intelligence") return chainBuilder([]);
+        if (table === "creator_brand_matches") {
+          const b = chainBuilder([]);
+          b.upsert = upsertMock;
+          return b;
+        }
+        return chainBuilder([]);
+      }),
+    } as never;
+
+    const count = await computeMatchesForBrand(supabase, "brand-1", 10);
+    expect(count).toBe(1); // Only c1, null is skipped
   });
 });

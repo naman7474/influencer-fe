@@ -221,4 +221,150 @@ describe("extractFromRateBenchmark", () => {
     // Should call from() multiple times (once for rate, once for creator)
     expect(mock.from).toHaveBeenCalled();
   });
+
+  it("does nothing when no market_rate and no creator_specific", async () => {
+    const mock = createMockSupabase();
+    await extractFromRateBenchmark(
+      "brand-1",
+      { tier: "micro" },
+      mock as unknown as Parameters<typeof extractFromRateBenchmark>[2]
+    );
+    // from() should not be called for inserts since both are null
+    expect(mock._insert).not.toHaveBeenCalled();
+  });
+
+  it("handles creator_specific without handle (no creator_insight written)", async () => {
+    const mock = createMockSupabase();
+    await extractFromRateBenchmark(
+      "brand-1",
+      {
+        tier: "nano",
+        market_rate: null,
+        creator_specific: { cpi: 30, engagement_rate: 2.5 },
+      },
+      mock as unknown as Parameters<typeof extractFromRateBenchmark>[2]
+    );
+    // creator_specific.handle is falsy, so no creator_insight writeKnowledge call
+    // and market_rate is null so no rate_benchmark call either
+    expect(mock._insert).not.toHaveBeenCalled();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  contradictKnowledge tests                                          */
+/* ------------------------------------------------------------------ */
+
+describe("contradictKnowledge", () => {
+  it("reduces confidence on existing knowledge", async () => {
+    const mock = createMockSupabase({
+      existingKnowledge: [
+        { id: "k1", confidence: 0.8, contradicted_count: 1 },
+      ],
+    });
+    await contradictKnowledge(
+      "k1",
+      "brand-1",
+      mock as unknown as Parameters<typeof contradictKnowledge>[2]
+    );
+    expect(mock._update).toHaveBeenCalled();
+  });
+
+  it("does nothing when knowledge item not found", async () => {
+    const mock = createMockSupabase({ existingKnowledge: [] });
+    // Override single to return null data
+    mock.from("agent_knowledge").select().eq("id", "nonexistent").eq("brand_id", "brand-1");
+    await contradictKnowledge(
+      "nonexistent",
+      "brand-1",
+      mock as unknown as Parameters<typeof contradictKnowledge>[2]
+    );
+    // update is called by the chain setup but with no real data; the key point
+    // is no error is thrown
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  extractFromOutreachOutcome tests                                   */
+/* ------------------------------------------------------------------ */
+
+import { extractFromOutreachOutcome } from "../knowledge-writer";
+
+describe("extractFromOutreachOutcome", () => {
+  it("writes knowledge for rejected outcome with reason", async () => {
+    const mock = createMockSupabase();
+    await extractFromOutreachOutcome(
+      "brand-1",
+      "rejected",
+      { rejection_reason: "Too expensive for the brand budget" },
+      mock as unknown as Parameters<typeof extractFromOutreachOutcome>[3]
+    );
+    expect(mock.from).toHaveBeenCalled();
+  });
+
+  it("does nothing for approved outcome", async () => {
+    const mock = createMockSupabase();
+    await extractFromOutreachOutcome(
+      "brand-1",
+      "approved",
+      { some_details: "stuff" },
+      mock as unknown as Parameters<typeof extractFromOutreachOutcome>[3]
+    );
+    // No insert should happen for approved outcomes
+    expect(mock._insert).not.toHaveBeenCalled();
+  });
+
+  it("does nothing for rejected outcome without rejection_reason", async () => {
+    const mock = createMockSupabase();
+    await extractFromOutreachOutcome(
+      "brand-1",
+      "rejected",
+      { other_field: "no rejection reason" },
+      mock as unknown as Parameters<typeof extractFromOutreachOutcome>[3]
+    );
+    expect(mock._insert).not.toHaveBeenCalled();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  writeKnowledge additional edge cases                               */
+/* ------------------------------------------------------------------ */
+
+describe("writeKnowledge – additional coverage", () => {
+  it("passes details and source IDs through on create", async () => {
+    const mock = createMockSupabase();
+    const result = await writeKnowledge({
+      brandId: "brand-1",
+      knowledgeType: "rate_benchmark",
+      fact: "Micro fitness creators median twelve to eighteen thousand per reel",
+      details: { tier: "micro", min: 12000, max: 18000 },
+      sourceEpisodeId: "ep-42",
+      sourceCampaignId: "camp-7",
+      supabase: mock as unknown as Parameters<typeof writeKnowledge>[0]["supabase"],
+    });
+    expect(result.action).toBe("created");
+  });
+
+  it("reinforces existing knowledge when similar fact found", async () => {
+    const existingItem = {
+      id: "existing-k1",
+      fact: "Micro fitness creators median twelve to eighteen thousand per reel",
+      confidence: 0.6,
+      evidence_count: 3,
+      reinforced_count: 2,
+      source_episode_ids: ["ep-1"],
+      source_campaign_ids: ["camp-1"],
+      details: { tier: "micro" },
+    };
+    const mock = createMockSupabase({ existingKnowledge: [existingItem] });
+    const result = await writeKnowledge({
+      brandId: "brand-1",
+      knowledgeType: "rate_benchmark",
+      fact: "Micro fitness creators median twelve to eighteen thousand per reel",
+      sourceEpisodeId: "ep-2",
+      sourceCampaignId: "camp-2",
+      supabase: mock as unknown as Parameters<typeof writeKnowledge>[0]["supabase"],
+    });
+    expect(result.action).toBe("reinforced");
+    expect(result.id).toBe("existing-k1");
+  });
 });

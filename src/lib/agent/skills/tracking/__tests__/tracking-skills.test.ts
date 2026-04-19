@@ -394,6 +394,137 @@ describe("geo-lift-analyzer", () => {
     expect(result.regions[0].status).toBe("lift");
     expect(result.summary.regions_with_lift).toBe(1);
   });
+
+  it("returns error when campaign not found", async () => {
+    const supabase = {
+      from: vi.fn(() => mockQueryBuilder([])),
+    } as unknown as SupabaseParam;
+
+    const t = geoLiftAnalyzerTool(brandId, supabase);
+    const result = (await t.execute(
+      { campaign_id: "bad" },
+      execOpts
+    )) as { error: string };
+    expect(result.error).toBeDefined();
+  });
+
+  it("handles missing pre-campaign snapshot", async () => {
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "campaigns") {
+          return mockQueryBuilder([
+            { id: "camp-1", name: "Test", start_date: "2025-06-01", end_date: "2025-07-01" },
+          ]);
+        }
+        if (table === "campaign_geo_snapshots") {
+          return mockQueryBuilder([
+            { city: "Mumbai", state: "MH", snapshot_type: "post_campaign", sessions: 100, orders: 10, revenue: 5000 },
+          ]);
+        }
+        return mockQueryBuilder([]);
+      }),
+    } as unknown as SupabaseParam;
+
+    const t = geoLiftAnalyzerTool(brandId, supabase);
+    const result = (await t.execute(
+      { campaign_id: "camp-1" },
+      execOpts
+    )) as { has_pre_snapshot: boolean; message: string };
+    expect(result.has_pre_snapshot).toBe(false);
+    expect(result.message).toContain("pre-campaign");
+  });
+
+  it("handles missing post-campaign snapshot", async () => {
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "campaigns") {
+          return mockQueryBuilder([
+            { id: "camp-1", name: "Test", start_date: "2025-06-01", end_date: "2025-07-01" },
+          ]);
+        }
+        if (table === "campaign_geo_snapshots") {
+          return mockQueryBuilder([
+            { city: "Delhi", state: "DL", snapshot_type: "pre_campaign", sessions: 500, orders: 20, revenue: 10000 },
+          ]);
+        }
+        return mockQueryBuilder([]);
+      }),
+    } as unknown as SupabaseParam;
+
+    const t = geoLiftAnalyzerTool(brandId, supabase);
+    const result = (await t.execute(
+      { campaign_id: "camp-1" },
+      execOpts
+    )) as { has_post_snapshot: boolean; message: string };
+    expect(result.has_post_snapshot).toBe(false);
+    expect(result.message).toContain("post-campaign");
+  });
+
+  it("classifies flat and declining regions", async () => {
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "campaigns") {
+          return mockQueryBuilder([
+            { id: "camp-1", name: "Mixed", start_date: "2025-06-01", end_date: "2025-07-01" },
+          ]);
+        }
+        if (table === "campaign_geo_snapshots") {
+          return mockQueryBuilder([
+            // Flat region: same pre/post
+            { city: "Pune", state: "MH", snapshot_type: "pre_campaign", sessions: 100, orders: 10, revenue: 5000, conversion_rate: 10 },
+            { city: "Pune", state: "MH", snapshot_type: "post_campaign", sessions: 102, orders: 10, revenue: 5100, conversion_rate: 9.8 },
+            // Declining region
+            { city: "Chennai", state: "TN", snapshot_type: "pre_campaign", sessions: 200, orders: 30, revenue: 20000, conversion_rate: 15 },
+            { city: "Chennai", state: "TN", snapshot_type: "post_campaign", sessions: 150, orders: 20, revenue: 12000, conversion_rate: 13 },
+          ]);
+        }
+        return mockQueryBuilder([]);
+      }),
+    } as unknown as SupabaseParam;
+
+    const t = geoLiftAnalyzerTool(brandId, supabase);
+    const result = (await t.execute(
+      { campaign_id: "camp-1" },
+      execOpts
+    )) as {
+      regions: { city: string; status: string }[];
+      summary: { flat_regions: number; declining_regions: number };
+    };
+
+    const pune = result.regions.find((r) => r.city === "Pune");
+    expect(pune?.status).toBe("flat");
+    const chennai = result.regions.find((r) => r.city === "Chennai");
+    expect(chennai?.status).toBe("decline");
+    expect(result.summary.flat_regions).toBe(1);
+    expect(result.summary.declining_regions).toBe(1);
+  });
+
+  it("handles zero pre-campaign values (calcLift edge case)", async () => {
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "campaigns") {
+          return mockQueryBuilder([
+            { id: "camp-1", name: "Zero", start_date: "2025-06-01", end_date: "2025-07-01" },
+          ]);
+        }
+        if (table === "campaign_geo_snapshots") {
+          return mockQueryBuilder([
+            { city: "New", state: "ST", snapshot_type: "pre_campaign", sessions: 0, orders: 0, revenue: 0, conversion_rate: 0 },
+            { city: "New", state: "ST", snapshot_type: "post_campaign", sessions: 100, orders: 5, revenue: 3000, conversion_rate: 5 },
+          ]);
+        }
+        return mockQueryBuilder([]);
+      }),
+    } as unknown as SupabaseParam;
+
+    const t = geoLiftAnalyzerTool(brandId, supabase);
+    const result = (await t.execute(
+      { campaign_id: "camp-1" },
+      execOpts
+    )) as { regions: { lift: { sessions_percent: number } }[] };
+
+    expect(result.regions[0].lift.sessions_percent).toBe(100); // 0 → 100 = 100%
+  });
 });
 
 /* ------------------------------------------------------------------ */

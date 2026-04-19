@@ -146,4 +146,74 @@ describe("TraceLogger", () => {
     expect(insertArg.cost_cents).toBeDefined();
     expect(insertArg.cost_cents).toBeGreaterThan(0);
   });
+
+  it("logs LLM call without output tokens", async () => {
+    const mock = createMockSupabase();
+    const logger = new TraceLogger("brand-1", null, mock as never);
+
+    await logger.logLLMCall(500, 250);
+
+    const insertArg = mock._insert.mock.calls[0][0];
+    expect(insertArg.output).toEqual({});
+  });
+
+  it("logs generic trace events via log()", async () => {
+    const mock = createMockSupabase();
+    const logger = new TraceLogger("brand-1", "session-1", mock as never);
+
+    await logger.log("tool_error", {
+      toolName: "guardrail_check",
+      error: "False promise detected",
+      durationMs: 10,
+    });
+
+    expect(mock._insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trace_type: "tool_error",
+        tool_name: "guardrail_check",
+        error: "False promise detected",
+        duration_ms: 10,
+        step_number: 1,
+      })
+    );
+  });
+
+  it("log() with minimal data (no optional fields)", async () => {
+    const mock = createMockSupabase();
+    const logger = new TraceLogger("brand-1", null, mock as never);
+
+    await logger.log("knowledge_written", {});
+
+    expect(mock._insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trace_type: "knowledge_written",
+        input: {},
+        output: {},
+      })
+    );
+  });
+
+  it("log() increments step counter", async () => {
+    const mock = createMockSupabase();
+    const logger = new TraceLogger("brand-1", null, mock as never);
+
+    await logger.logToolCall("tool_a", {}, 0);
+    await logger.log("approval_created", { toolName: "test" });
+
+    const calls = mock._insert.mock.calls;
+    expect(calls[0][0].step_number).toBe(1);
+    expect(calls[1][0].step_number).toBe(2);
+  });
+
+  it("handles insert throwing an exception (catch block)", async () => {
+    const mock = createMockSupabase();
+    mock.from.mockReturnValue({
+      insert: vi.fn().mockRejectedValue(new Error("Network error")),
+    });
+
+    const logger = new TraceLogger("brand-1", null, mock as never);
+
+    // Should not throw — the catch block silently swallows errors
+    await expect(logger.logToolCall("test", {}, 0)).resolves.not.toThrow();
+  });
 });

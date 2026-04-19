@@ -104,15 +104,14 @@ export async function runAgent(params: AgentRuntimeParams) {
     temperature: Number(agentConfig.temperature) || modelSelection.temperature,
     maxOutputTokens: agentConfig.max_tokens || modelSelection.maxTokens,
     onFinish: async ({ text, usage, steps }) => {
-      // Phase 6B: Trace LLM call
-      const totalTokens = (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0);
-      await tracer.logLLMCall(
-        totalTokens,
-        0,
-        usage?.outputTokens ?? 0
-      );
-
-      // Phase 6B: Trace tool calls with results/errors from steps
+      // 1. Persist assistant message FIRST (including tool calls for artifact reconstruction)
+      //    This must happen before anything else so chat history is never lost.
+      const toolCallsData: Array<{
+        toolCallId: string;
+        toolName: string;
+        args: Record<string, unknown>;
+        output: Record<string, unknown> | null;
+      }> = [];
       if (steps) {
         for (const step of steps) {
           if (step.toolCalls) {
@@ -120,75 +119,124 @@ export async function runAgent(params: AgentRuntimeParams) {
               const toolResult = step.toolResults?.find(
                 (tr: { toolCallId: string }) => tr.toolCallId === tc.toolCallId
               );
-              if (toolResult) {
-                const result = toolResult.output as Record<string, unknown>;
-                if (result?.error) {
-                  await tracer.logToolError(
-                    tc.toolName,
-                    String(result.error),
-                    0
-                  );
+              toolCallsData.push({
+                toolCallId: tc.toolCallId,
+                toolName: tc.toolName,
+                args: (tc.input ?? {}) as Record<string, unknown>,
+                output: toolResult
+                  ? (toolResult.output as Record<string, unknown>) ?? null
+                  : null,
+              });
+            }
+          }
+        }
+      }
+
+      console.log("[runtime] saving assistant message, session:", sessionId,
+        "toolCalls:", toolCallsData.length,
+        "withOutput:", toolCallsData.filter(tc => tc.output !== null).length,
+        "tools:", toolCallsData.map(tc => tc.toolName)
+      );
+
+      const { error: insertError } = await supabase.from("agent_conversations").insert({
+        brand_id: brandId,
+        session_id: sessionId || null,
+        role: "assistant",
+        content: text || "",
+        tool_calls: toolCallsData.length > 0 ? toolCallsData : null,
+        page_context: pageContext,
+        token_count: usage?.totalTokens ?? null,
+        model_used: modelSelection.modelId,
+      } as never);
+
+      if (insertError) {
+        console.error("[runtime] failed to save assistant message:", insertError);
+      }
+
+      // 2. Non-critical operations below — wrapped in try/catch so they never
+      //    prevent the message save above from completing.
+      try {
+        // Phase 6B: Trace LLM call
+        const totalTokens = (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0);
+        await tracer.logLLMCall(
+          totalTokens,
+          0,
+          usage?.outputTokens ?? 0
+        );
+
+        // Phase 6B: Trace tool calls with results/errors from steps
+        if (steps) {
+          for (const step of steps) {
+            if (step.toolCalls) {
+              for (const tc of step.toolCalls) {
+                const toolResult = step.toolResults?.find(
+                  (tr: { toolCallId: string }) => tr.toolCallId === tc.toolCallId
+                );
+                if (toolResult) {
+                  const result = toolResult.output as Record<string, unknown>;
+                  if (result?.error) {
+                    await tracer.logToolError(
+                      tc.toolName,
+                      String(result.error),
+                      0
+                    );
+                  } else {
+                    await tracer.logToolCall(
+                      tc.toolName,
+                      tc.input as Record<string, unknown>,
+                      0
+                    );
+                    await tracer.logToolResult(
+                      tc.toolName,
+                      { resultKeys: Object.keys(result || {}) },
+                      0
+                    );
+                  }
+
+                  // Phase 7: Extract knowledge from rate benchmarker results
+                  if (tc.toolName === "rate_benchmarker" && result && !result.error) {
+                    try {
+                      await extractFromRateBenchmark(brandId, result, supabase);
+                    } catch {
+                      // Knowledge extraction failure should not break the agent
+                    }
+                  }
                 } else {
                   await tracer.logToolCall(
                     tc.toolName,
                     tc.input as Record<string, unknown>,
                     0
                   );
-                  await tracer.logToolResult(
-                    tc.toolName,
-                    { resultKeys: Object.keys(result || {}) },
-                    0
-                  );
                 }
-
-                // Phase 7: Extract knowledge from rate benchmarker results
-                if (tc.toolName === "rate_benchmarker" && result && !result.error) {
-                  try {
-                    await extractFromRateBenchmark(brandId, result, supabase);
-                  } catch {
-                    // Knowledge extraction failure should not break the agent
-                  }
-                }
-              } else {
-                await tracer.logToolCall(
-                  tc.toolName,
-                  tc.input as Record<string, unknown>,
-                  0
-                );
               }
             }
           }
         }
+
+        // Phase 7: Output guardrails — check for false promises and currency issues
+        if (text) {
+          const guardrailResult = validateOutput(text, {});
+          if (!guardrailResult.passed) {
+            await tracer.log("tool_error", {
+              toolName: "guardrail_check",
+              error: guardrailResult.issues.join("; "),
+            });
+          }
+        }
+      } catch (traceErr) {
+        console.error("[runtime] tracing/guardrail error (non-fatal):", traceErr);
       }
 
-      // Phase 7: Output guardrails — check for false promises and currency issues
-      if (text) {
-        const guardrailResult = validateOutput(text, {});
-        if (!guardrailResult.passed) {
-          await tracer.log("tool_error", {
-            toolName: "guardrail_check",
-            error: guardrailResult.issues.join("; "),
-          });
+      // 3. Write episodic memory for significant interactions
+      if (text && text.length > 50) {
+        try {
+          await maybeWriteEpisode(brandId, messages, text, supabase);
+        } catch (epErr) {
+          console.error("[runtime] episode write error (non-fatal):", epErr);
         }
       }
 
-      // 5. Persist assistant message
-      await supabase.from("agent_conversations").insert({
-        brand_id: brandId,
-        session_id: sessionId || null,
-        role: "assistant",
-        content: text || "",
-        page_context: pageContext,
-        token_count: usage?.totalTokens ?? null,
-        model_used: modelSelection.modelId,
-      } as never);
-
-      // 6. Write episodic memory for significant interactions
-      if (text && text.length > 50) {
-        await maybeWriteEpisode(brandId, messages, text, supabase);
-      }
-
-      // 7. Increment daily counter
+      // 4. Increment daily counter
       await supabase
         .from("agent_config")
         .update({ messages_today: (agentConfig.messages_today || 0) + 1 } as never)

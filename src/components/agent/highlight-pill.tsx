@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import type { HighlightKind } from "@/lib/agent/highlights";
 import { useHighlightFocus } from "./highlight-focus-context";
-import { cn } from "@/lib/utils";
 
 const KIND_ICON: Record<HighlightKind, LucideIcon> = {
   creators_found: Users,
@@ -39,22 +38,22 @@ const KIND_ICON: Record<HighlightKind, LucideIcon> = {
   generic: Sparkles,
 };
 
-const KIND_ACCENT: Record<HighlightKind, string> = {
-  creators_found: "text-blue-600 dark:text-blue-400",
-  creator_profile: "text-blue-600 dark:text-blue-400",
-  campaign_created: "text-rose-600 dark:text-rose-400",
-  campaign_overview: "text-rose-600 dark:text-rose-400",
-  outreach_drafted: "text-violet-600 dark:text-violet-400",
-  approval_pending: "text-amber-600 dark:text-amber-400",
-  rate_benchmark: "text-amber-600 dark:text-amber-400",
-  negotiation: "text-amber-600 dark:text-amber-400",
-  deal_memo: "text-green-600 dark:text-green-400",
-  budget: "text-emerald-600 dark:text-emerald-400",
-  roi: "text-emerald-600 dark:text-emerald-400",
-  content_tracked: "text-cyan-600 dark:text-cyan-400",
-  brief_generated: "text-violet-600 dark:text-violet-400",
-  relationship_insight: "text-pink-600 dark:text-pink-400",
-  generic: "text-muted-foreground",
+const KIND_LABEL: Record<string, string> = {
+  creators_found: "Creator list",
+  creator_profile: "Creator profile",
+  outreach_drafted: "Email draft",
+  rate_benchmark: "Rate benchmark",
+  negotiation: "Counter-offer",
+  deal_memo: "Deal memo",
+  campaign_created: "Campaign spec",
+  campaign_overview: "Campaign overview",
+  budget: "Budget analysis",
+  roi: "ROI report",
+  content_tracked: "Content tracker",
+  brief_generated: "Brief",
+  relationship_insight: "Insight",
+  approval_pending: "Approval",
+  generic: "Document",
 };
 
 interface Props {
@@ -65,34 +64,56 @@ interface Props {
 }
 
 /**
- * Breadcrumb pill used inline in the chat stream to point at a
- * highlight card in the side panel. Clicking scrolls + flashes it.
+ * Artifact reference card used inline in the chat stream.
+ * Clicking opens the artifact in the right-side canvas.
  */
 export function HighlightPill({ id, kind, title, subtitle }: Props) {
   const { focusHighlight } = useHighlightFocus();
   const Icon = KIND_ICON[kind];
-  const accent = KIND_ACCENT[kind];
+  const kindLabel = KIND_LABEL[kind] ?? "Document";
 
   return (
     <button
       type="button"
       onClick={() => focusHighlight(id)}
-      className={cn(
-        "group inline-flex max-w-full items-center gap-2 rounded-lg border bg-muted/40",
-        "px-2.5 py-1.5 text-xs hover:bg-muted hover:border-primary/30 transition-colors",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-      )}
+      className="group flex items-center gap-3 text-left transition-all w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 rounded-lg"
+      style={{
+        background: "var(--card)",
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        padding: "10px 12px",
+      }}
     >
-      <Icon className={cn("h-3.5 w-3.5 shrink-0", accent)} />
-      <span className="min-w-0 flex items-baseline gap-1.5">
-        <span className="font-medium truncate">{title}</span>
-        {subtitle && (
-          <span className="text-muted-foreground truncate hidden sm:inline">
-            · {subtitle}
+      <div
+        className="h-9 w-9 rounded-md grid place-items-center shrink-0"
+        style={{
+          background: "var(--surface-2)",
+          border: "1px solid var(--border)",
+          color: "var(--muted-foreground)",
+        }}
+      >
+        <Icon className="h-3.5 w-3.5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span
+            className="text-[13px] font-medium truncate"
+            style={{ color: "var(--foreground)" }}
+          >
+            {title}
           </span>
-        )}
-      </span>
-      <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
+        </div>
+        <div
+          className="text-[11.5px] font-mono mt-0.5"
+          style={{ color: "var(--fg-faint)" }}
+        >
+          {kindLabel} · open in canvas
+        </div>
+      </div>
+      <ChevronRight
+        className="h-3.5 w-3.5 shrink-0"
+        style={{ color: "var(--fg-faint)" }}
+      />
     </button>
   );
 }

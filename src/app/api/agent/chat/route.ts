@@ -91,6 +91,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Ensure all tool parts have a valid `input` object — loaded history or
+    // edge-case SDK states can produce parts with undefined input, which
+    // causes Anthropic API to reject with "tool_use.input: Field required".
+    for (const msg of messages) {
+      if (msg.parts) {
+        for (const part of msg.parts) {
+          if (
+            typeof part.type === "string" &&
+            part.type.startsWith("tool-") &&
+            part.input === undefined
+          ) {
+            part.input = {};
+          }
+        }
+      }
+    }
+
     // Convert UI messages to model messages for streamText
     const modelMessages = await convertToModelMessages(messages);
 
