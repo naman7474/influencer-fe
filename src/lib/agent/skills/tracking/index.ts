@@ -10,6 +10,7 @@ import { roiCalculatorTool } from "./roi-calculator";
 import { geoLiftAnalyzerTool } from "./geo-lift-analyzer";
 import { campaignReporterTool } from "./campaign-reporter";
 import { complianceScannerTool } from "./compliance-scanner";
+import { contentAnalyzerTool } from "./content-analyzer";
 
 const skills: SkillDefinition[] = [
   {
@@ -54,6 +55,13 @@ const skills: SkillDefinition[] = [
     riskLevel: "low",
     factory: complianceScannerTool,
   },
+  {
+    name: "content_analyzer",
+    category: "tracking",
+    permission: "can_scan_content",
+    riskLevel: "low",
+    factory: contentAnalyzerTool,
+  },
 ];
 
 registerSkills(skills);
@@ -64,3 +72,4 @@ export { roiCalculatorTool } from "./roi-calculator";
 export { geoLiftAnalyzerTool } from "./geo-lift-analyzer";
 export { campaignReporterTool } from "./campaign-reporter";
 export { complianceScannerTool } from "./compliance-scanner";
+export { contentAnalyzerTool } from "./content-analyzer";

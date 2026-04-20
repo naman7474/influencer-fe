@@ -206,6 +206,37 @@ export async function POST(request: NextRequest) {
       } as never);
     }
 
+    // Enqueue video analysis if content URL is an Instagram reel/post
+    if (
+      contentUrl &&
+      /instagram\.com\/(reel|p)\//i.test(contentUrl) &&
+      campaign
+    ) {
+      const workerUrl = process.env.PIPELINE_WORKER_URL;
+      const workerSecret = process.env.PIPELINE_WORKER_SECRET;
+      if (workerUrl && workerSecret) {
+        fetch(`${workerUrl.replace(/\/$/, "")}/enqueue`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Worker-Secret": workerSecret,
+          },
+          body: JSON.stringify({
+            job_type: "content_video_analysis",
+            brand_id: (campaign as { brand_id: string }).brand_id,
+            payload: {
+              content_submission_id: (submission as { id: string }).id,
+              content_url: contentUrl,
+              campaign_id: cc.campaign_id,
+              creator_id: cc.creator_id,
+            },
+          }),
+        }).catch((err) =>
+          console.warn("Failed to enqueue video analysis:", err)
+        );
+      }
+    }
+
     return NextResponse.json({ success: true, submission });
   } catch (err) {
     console.error("POST content-submission error:", err);

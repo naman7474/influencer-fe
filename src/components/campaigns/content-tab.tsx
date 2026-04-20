@@ -17,10 +17,24 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { AnalysisStatusBadge } from "./content-analysis/analysis-status-badge";
+import { AnalysisScoreRing } from "./content-analysis/analysis-score-ring";
+import { AnalysisDetailPanel } from "./content-analysis/analysis-detail-panel";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
+
+interface ContentAnalysisSummary {
+  status: string;
+  overall_score: number | null;
+  hook_strength_score: number | null;
+  brand_mention_score: number | null;
+  brief_compliance_score: number | null;
+  guideline_compliance_score: number | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  analysis: Record<string, any> | null;
+}
 
 interface ContentSubmission {
   id: string;
@@ -39,6 +53,8 @@ interface ContentSubmission {
   feedback: string | null;
   submitted_at: string;
   reviewed_at: string | null;
+  analysis_status?: string;
+  content_analyses?: ContentAnalysisSummary | null;
 }
 
 interface SubmissionLink {
@@ -97,6 +113,11 @@ export function ContentTab({ campaignId, creators }: ContentTabProps) {
   const [submittingReview, setSubmittingReview] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [generatingLinks, setGeneratingLinks] = useState(false);
+
+  // Analysis detail panel state
+  const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
+  const [selectedCreatorHandle, setSelectedCreatorHandle] = useState<string>("");
+  const [selectedSubStatus, setSelectedSubStatus] = useState<string>("");
 
   // Manual add state
   const [addingForCreatorId, setAddingForCreatorId] = useState<string | null>(
@@ -430,7 +451,7 @@ export function ContentTab({ campaignId, creators }: ContentTabProps) {
 
                 {/* Manual add form */}
                 {isAdding && (
-                  <div className="rounded-lg border border-dashed p-3 space-y-2 bg-muted/30">
+                  <div className="rounded-lg border border-dashed p-3 space-y-2 bg-muted/30" onClick={(e) => e.stopPropagation()}>
                     <p className="text-xs font-medium">
                       Manually add content URL
                     </p>
@@ -499,11 +520,18 @@ export function ContentTab({ campaignId, creators }: ContentTabProps) {
                 {/* Existing submissions */}
                 {creatorSubs.map((sub) => {
                   const isReviewing = reviewingId === sub.id;
+                  const analysisData = sub.content_analyses;
+                  const analysisStatus = analysisData?.status ?? sub.analysis_status;
 
                   return (
                     <div
                       key={sub.id}
-                      className="rounded border bg-background p-2.5 space-y-1.5"
+                      className="rounded border bg-background p-2.5 space-y-1.5 cursor-pointer hover:border-primary/50 transition-colors"
+                      onClick={() => {
+                        setSelectedSubmissionId(sub.id);
+                        setSelectedCreatorHandle(c.creator.handle);
+                        setSelectedSubStatus(sub.status);
+                      }}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -526,6 +554,11 @@ export function ContentTab({ campaignId, creators }: ContentTabProps) {
                               { month: "short", day: "numeric" }
                             )}
                           </span>
+                          {/* Analysis status + score */}
+                          <AnalysisStatusBadge status={analysisStatus} />
+                          {analysisData?.overall_score != null && analysisStatus === "completed" && (
+                            <AnalysisScoreRing score={analysisData.overall_score} size="sm" />
+                          )}
                         </div>
                         {sub.content_url && (
                           <a
@@ -533,6 +566,7 @@ export function ContentTab({ campaignId, creators }: ContentTabProps) {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-info hover:text-info/80"
+                            onClick={(e) => e.stopPropagation()}
                           >
                             <ExternalLink className="size-3.5" />
                           </a>
@@ -568,7 +602,7 @@ export function ContentTab({ campaignId, creators }: ContentTabProps) {
 
                       {/* Review actions */}
                       {sub.status === "submitted" && (
-                        <div className="pt-1">
+                        <div className="pt-1" onClick={(e) => e.stopPropagation()}>
                           {isReviewing ? (
                             <div className="space-y-2">
                               <textarea
@@ -658,6 +692,23 @@ export function ContentTab({ campaignId, creators }: ContentTabProps) {
           })}
         </CardContent>
       </Card>
+
+      {/* ── Analysis Detail Panel ── */}
+      <AnalysisDetailPanel
+        submissionId={selectedSubmissionId}
+        open={selectedSubmissionId !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedSubmissionId(null);
+        }}
+        creatorHandle={selectedCreatorHandle}
+        submissionStatus={selectedSubStatus}
+        onReview={async (action, feedback) => {
+          if (selectedSubmissionId) {
+            await handleReview(selectedSubmissionId, action);
+            setSelectedSubmissionId(null);
+          }
+        }}
+      />
     </div>
   );
 }

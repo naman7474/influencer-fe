@@ -25,7 +25,7 @@ export async function GET(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: submissions, error } = await (supabase as any)
       .from("content_submissions")
-      .select("*")
+      .select("*, content_analyses(status, overall_score, hook_strength_score, brand_mention_score, brief_compliance_score, guideline_compliance_score, analysis)")
       .eq("campaign_id", campaignId)
       .order("submitted_at", { ascending: false });
 
