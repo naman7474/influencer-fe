@@ -305,10 +305,10 @@ export function ProfileHeader({ creator, scores, match }: ProfileHeaderProps) {
               Brand Match
             </h3>
             <span className="text-sm font-bold text-primary">
-              {match.match_score}%
+              {toPercent(match.match_score)}%
             </span>
           </div>
-          <MatchBar score={match.match_score} />
+          <MatchBar score={toPercent(match.match_score)} />
           {match.match_reasoning && (
             <p className="mt-2 text-xs text-muted-foreground">
               {match.match_reasoning}
@@ -317,28 +317,39 @@ export function ProfileHeader({ creator, scores, match }: ProfileHeaderProps) {
           {/* Score breakdown chips */}
           <div className="mt-3 flex flex-wrap gap-2">
             {match.niche_fit_score != null && (
-              <ScoreChip label="Niche Fit" value={match.niche_fit_score} />
+              <ScoreChip label="Niche Fit" value={toPercent(match.niche_fit_score)} />
             )}
             {match.audience_geo_score != null && (
-              <ScoreChip label="Geo Match" value={match.audience_geo_score} />
+              <ScoreChip label="Geo Match" value={toPercent(match.audience_geo_score)} />
             )}
             {match.engagement_score != null && (
-              <ScoreChip label="Engagement" value={match.engagement_score} />
+              <ScoreChip label="Engagement" value={toPercent(match.engagement_score)} />
             )}
             {match.content_style_score != null && (
-              <ScoreChip label="Content Style" value={match.content_style_score} />
+              <ScoreChip label="Content Style" value={toPercent(match.content_style_score)} />
             )}
             {match.brand_safety_score != null && (
               <BrandSafetyChip value={match.brand_safety_score} />
             )}
             {match.price_tier_score != null && (
-              <ScoreChip label="Price Tier" value={match.price_tier_score} />
+              <ScoreChip label="Price Tier" value={toPercent(match.price_tier_score)} />
             )}
           </div>
         </div>
       )}
     </div>
   );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+/** Scores are stored as 0-1 decimals by the matching engine.
+ *  Convert to 0-100 for display. Guard against legacy 0-100 values. */
+function toPercent(v: number): number {
+  if (v > 1) return Math.round(v);
+  return Math.round(v * 100);
 }
 
 /* ------------------------------------------------------------------ */

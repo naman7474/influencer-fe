@@ -250,13 +250,13 @@ export function MessageDetail({ threadId, brand, onBack, onThreadUpdate }: Props
               const msg = item.data;
               return (
                 <div key={`msg-${msg.id}`} className="flex justify-end">
-                  <div className="max-w-[85%]">
-                    <div className="bg-primary/10 rounded-xl rounded-br-sm px-4 py-3">
-                      {msg.subject && (
-                        <p className="text-xs font-medium text-muted-foreground mb-1">
-                          Subject: {msg.subject}
-                        </p>
-                      )}
+                  <div className="max-w-[80%]">
+                    {msg.subject && (
+                      <p className="text-[10px] font-medium text-muted-foreground mb-1 text-right px-1">
+                        {msg.subject}
+                      </p>
+                    )}
+                    <div className="bg-primary/10 border border-primary/20 rounded-2xl rounded-br-sm px-4 py-3">
                       <div
                         className="text-sm prose prose-sm max-w-none"
                         dangerouslySetInnerHTML={{
@@ -266,7 +266,9 @@ export function MessageDetail({ threadId, brand, onBack, onThreadUpdate }: Props
                         }}
                       />
                     </div>
-                    <div className="flex items-center gap-2 mt-1 justify-end text-[11px] text-muted-foreground">
+                    <div className="flex items-center gap-2 mt-1 justify-end text-[10px] text-muted-foreground px-1">
+                      <span className="font-medium">You</span>
+                      <span>·</span>
                       <span>
                         {msg.sent_at
                           ? new Date(msg.sent_at).toLocaleString("en-IN", {
@@ -277,7 +279,9 @@ export function MessageDetail({ threadId, brand, onBack, onThreadUpdate }: Props
                             })
                           : "Draft"}
                       </span>
-                      {msg.status === "sent" && <CheckCheck className="size-3" />}
+                      {(msg.status === "sent" || msg.status === "delivered") && (
+                        <CheckCheck className="size-3 text-primary" />
+                      )}
                       {msg.opened_at && (
                         <>
                           <Eye className="size-3 text-blue-500" />
@@ -294,19 +298,18 @@ export function MessageDetail({ threadId, brand, onBack, onThreadUpdate }: Props
               const reply = item.data;
               return (
                 <div key={`reply-${reply.id}`} className="flex justify-start">
-                  <div className="max-w-[85%]">
-                    <div className="bg-muted border rounded-xl rounded-bl-sm px-4 py-3">
-                      <div
-                        className="text-sm prose prose-sm max-w-none"
-                        dangerouslySetInnerHTML={{
-                          __html: reply.html_content || reply.text_content || "",
-                        }}
-                      />
-                    </div>
-                    <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground">
-                      <span>@{creator.handle}</span>
-                      <span>·</span>
-                      <span>
+                  <div className="max-w-[80%]">
+                    <div className="flex items-center gap-2 mb-1 px-1">
+                      <Avatar size="sm">
+                        {creator.avatar_url && (
+                          <AvatarImage src={creator.avatar_url} alt={creator.handle} />
+                        )}
+                        <AvatarFallback className="text-[8px]">
+                          {(creator.display_name || creator.handle).charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-[10px] font-medium">@{creator.handle}</span>
+                      <span className="text-[10px] text-muted-foreground">
                         {new Date(reply.received_at).toLocaleString("en-IN", {
                           month: "short",
                           day: "numeric",
@@ -314,6 +317,14 @@ export function MessageDetail({ threadId, brand, onBack, onThreadUpdate }: Props
                           minute: "2-digit",
                         })}
                       </span>
+                    </div>
+                    <div className="bg-muted/60 border rounded-2xl rounded-bl-sm px-4 py-3">
+                      <div
+                        className="text-sm prose prose-sm max-w-none"
+                        dangerouslySetInnerHTML={{
+                          __html: reply.html_content || reply.text_content || "",
+                        }}
+                      />
                     </div>
                   </div>
                 </div>

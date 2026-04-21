@@ -271,7 +271,7 @@ export function AudienceTab({ audience, spokenLanguage, creatorCity, creatorCoun
         </CardHeader>
         <CardContent>
           {languageData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={languageData.length * 40 + 20}>
+            <ResponsiveContainer width="100%" height={languageData.length * 40 + 20} minWidth={0}>
               <BarChart
                 data={languageData}
                 layout="vertical"
@@ -331,7 +331,7 @@ export function AudienceTab({ audience, spokenLanguage, creatorCity, creatorCoun
           <div className="flex flex-col items-center gap-4 sm:flex-row">
             {/* Donut chart */}
             <div className="relative flex-shrink-0">
-              <ResponsiveContainer width={160} height={160}>
+              <ResponsiveContainer width={160} height={160} minWidth={0}>
                 <PieChart>
                   <Pie
                     data={authenticityData}

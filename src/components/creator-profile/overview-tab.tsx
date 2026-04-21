@@ -374,7 +374,7 @@ function ContentMixChart({ data }: { data: Json | null }) {
 
   return (
     <div className="h-28 w-full">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minWidth={0}>
         <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 0 }}>
           <XAxis type="number" hide />
           <YAxis

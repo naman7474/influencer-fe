@@ -79,14 +79,6 @@ interface ContentTabProps {
 /*  Status config                                                      */
 /* ------------------------------------------------------------------ */
 
-const STATUS_COLUMNS = [
-  { key: "brief_sent", label: "Brief Sent" },
-  { key: "in_progress", label: "In Progress" },
-  { key: "submitted", label: "Submitted" },
-  { key: "approved", label: "Approved" },
-  { key: "live", label: "Live" },
-] as const;
-
 function statusColor(status: string): string {
   const map: Record<string, string> = {
     submitted: "bg-info/10 text-info",
@@ -255,23 +247,6 @@ export function ContentTab({ campaignId, creators }: ContentTabProps) {
     );
   }
 
-  // Build kanban data — count all submissions per creator
-  const kanbanData = STATUS_COLUMNS.map((col) => {
-    const items = creators
-      .filter((c) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const contentStatus = (c as any).content_status ?? "brief_pending";
-        return contentStatus === col.key;
-      })
-      .map((c) => {
-        const creatorSubs = submissions.filter(
-          (s) => s.campaign_creator_id === c.id
-        );
-        return { ...c, submissions: creatorSubs };
-      });
-    return { ...col, items };
-  });
-
   // Check if any links exist
   const hasLinks = submissionLinks.some((l) => l.has_token);
 
@@ -342,62 +317,6 @@ export function ContentTab({ campaignId, creators }: ContentTabProps) {
           )}
         </CardContent>
       </Card>
-
-      {/* ── Kanban View ── */}
-      <div className="grid grid-cols-5 gap-3">
-        {kanbanData.map((col) => (
-          <div key={col.key} className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                {col.label}
-              </h4>
-              <Badge variant="secondary" className="text-[10px]">
-                {col.items.length}
-              </Badge>
-            </div>
-            <div className="space-y-2">
-              {col.items.map((item) => (
-                <Card
-                  key={item.id}
-                  className="hover:border-primary/50 transition-colors"
-                >
-                  <CardContent className="p-3 space-y-1">
-                    <p className="font-handle text-xs">
-                      @{item.creator.handle}
-                    </p>
-                    {item.submissions.length > 0 && (
-                      <div className="flex items-center gap-1">
-                        <Badge
-                          variant="secondary"
-                          className={cn(
-                            "text-[9px]",
-                            statusColor(item.submissions[0].status)
-                          )}
-                        >
-                          {item.submissions[0].status.replace("_", " ")}
-                        </Badge>
-                        {item.submissions.length > 1 && (
-                          <Badge
-                            variant="secondary"
-                            className="text-[9px]"
-                          >
-                            {item.submissions.length} videos
-                          </Badge>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-              {col.items.length === 0 && (
-                <div className="rounded-lg border border-dashed p-4 text-center">
-                  <p className="text-[10px] text-muted-foreground">Empty</p>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
 
       {/* ── All Submissions List ── */}
       <Card>

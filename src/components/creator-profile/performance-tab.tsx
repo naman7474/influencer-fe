@@ -189,7 +189,7 @@ export function PerformanceTab({ scores, posts }: PerformanceTabProps) {
           </CardHeader>
           <CardContent>
             {engagementTrendData.length > 1 ? (
-              <ResponsiveContainer width="100%" height={240}>
+              <ResponsiveContainer width="100%" height={240} minWidth={0}>
                 <LineChart
                   data={engagementTrendData}
                   margin={{ top: 5, right: 10, bottom: 5, left: 0 }}
@@ -253,7 +253,7 @@ export function PerformanceTab({ scores, posts }: PerformanceTabProps) {
           </CardHeader>
           <CardContent>
             {formatData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={240}>
+              <ResponsiveContainer width="100%" height={240} minWidth={0}>
                 <BarChart
                   data={formatData}
                   margin={{ top: 5, right: 10, bottom: 5, left: 0 }}

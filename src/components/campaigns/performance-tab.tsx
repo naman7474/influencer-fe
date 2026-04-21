@@ -222,7 +222,7 @@ export function PerformanceTab({ campaignId, currency }: PerformanceTabProps) {
               <h3 className="mb-3 text-sm font-medium">
                 Attribution Breakdown
               </h3>
-              <ResponsiveContainer width="100%" height={220}>
+              <ResponsiveContainer width="100%" height={220} minWidth={0}>
                 <PieChart>
                   <Pie
                     data={pieData}
@@ -265,7 +265,7 @@ export function PerformanceTab({ campaignId, currency }: PerformanceTabProps) {
           <Card className={pieData.length > 0 ? "lg:col-span-3" : "lg:col-span-5"}>
             <CardContent>
               <h3 className="mb-3 text-sm font-medium">Revenue Over Time</h3>
-              <ResponsiveContainer width="100%" height={220}>
+              <ResponsiveContainer width="100%" height={220} minWidth={0}>
                 <LineChart data={timeseries}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis

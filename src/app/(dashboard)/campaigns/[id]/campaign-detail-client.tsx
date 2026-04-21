@@ -38,6 +38,8 @@ import { PerformanceTab } from "@/components/campaigns/performance-tab";
 import { GeographicLiftWidget } from "@/components/campaigns/geographic-lift-widget";
 import { GiftingDialog } from "@/components/campaigns/gifting-dialog";
 import { ContentTab } from "@/components/campaigns/content-tab";
+import { createClient } from "@/lib/supabase/client";
+import { updateCampaignCreatorStatus } from "@/lib/queries/campaigns";
 import type { Campaign, CampaignUtmLink } from "@/lib/types/database";
 import type { CampaignCreatorWithDetails } from "@/lib/queries/campaigns";
 
@@ -131,7 +133,8 @@ export function CampaignDetailClient({
   utmLinks,
   discountCodes: initialDiscountCodes = [],
 }: CampaignDetailClientProps) {
-  const [creators] = useState(initialCreators);
+  const [creators, setCreators] = useState(initialCreators);
+  const supabase = createClient();
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [generatedLinks, setGeneratedLinks] = useState(utmLinks);
   const [generating, setGenerating] = useState(false);
@@ -143,6 +146,25 @@ export function CampaignDetailClient({
     (campaign as Campaign & { default_discount_percentage?: number }).default_discount_percentage ?? 15
   );
   const [giftingCreator, setGiftingCreator] = useState<CampaignCreatorWithDetails | null>(null);
+
+  const handleSaveRate = useCallback(
+    async (ccId: string, rateStr: string) => {
+      const rate = rateStr.trim() === "" ? null : parseFloat(rateStr);
+      if (rateStr.trim() !== "" && (isNaN(rate!) || rate! < 0)) return;
+      try {
+        // Find current status to pass through
+        const cc = creators.find((c) => c.id === ccId);
+        if (!cc) return;
+        await updateCampaignCreatorStatus(supabase, ccId, cc.status, rate);
+        setCreators((prev) =>
+          prev.map((c) => (c.id === ccId ? { ...c, agreed_rate: rate } : c))
+        );
+      } catch (err) {
+        console.error("Failed to save rate:", err);
+      }
+    },
+    [creators, supabase],
+  );
 
   const handleGenerateUTMs = useCallback(async () => {
     setGenerating(true);
@@ -451,12 +473,24 @@ export function CampaignDetailClient({
                             : "--"}
                         </TableCell>
                         <TableCell>
-                          {cc.agreed_rate != null
-                            ? formatCurrency(
-                                cc.agreed_rate,
-                                campaign.currency ?? "INR",
-                              )
-                            : "--"}
+                          <input
+                            type="number"
+                            min={0}
+                            defaultValue={cc.agreed_rate ?? ""}
+                            placeholder="--"
+                            className="w-20 rounded border bg-background px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-ring [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            onBlur={(e) => {
+                              const orig = cc.agreed_rate?.toString() ?? "";
+                              if (e.target.value !== orig) {
+                                handleSaveRate(cc.id, e.target.value);
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                (e.target as HTMLInputElement).blur();
+                              }
+                            }}
+                          />
                         </TableCell>
                         <TableCell>
                           <CreatorStatusDropdown
@@ -596,17 +630,27 @@ export function CampaignDetailClient({
                             </span>
                           </span>
                         )}
-                        {cc.agreed_rate != null && (
-                          <span>
-                            Rate:{" "}
-                            <span className="font-semibold text-foreground">
-                              {formatCurrency(
-                                cc.agreed_rate,
-                                campaign.currency ?? "INR",
-                              )}
-                            </span>
-                          </span>
-                        )}
+                        <span className="flex items-center gap-1">
+                          Rate:
+                          <input
+                            type="number"
+                            min={0}
+                            defaultValue={cc.agreed_rate ?? ""}
+                            placeholder="--"
+                            className="w-16 rounded border bg-background px-1.5 py-0.5 text-xs text-right font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-ring [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            onBlur={(e) => {
+                              const orig = cc.agreed_rate?.toString() ?? "";
+                              if (e.target.value !== orig) {
+                                handleSaveRate(cc.id, e.target.value);
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                (e.target as HTMLInputElement).blur();
+                              }
+                            }}
+                          />
+                        </span>
                       </div>
 
                       {/* Gift button for confirmed+ creators */}
