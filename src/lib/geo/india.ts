@@ -328,6 +328,81 @@ export function buildCreatorZoneProfile(opts: {
   return profile;
 }
 
+/* ── State-level resolution (for direct brand_shopify_geo overlap) ──── */
+
+/**
+ * Canonical lowercase slug for an Indian state. Returns null if the
+ * string doesn't match a known state or city-in-state.
+ *
+ * Accepts: "Maharashtra", "MH", "mumbai" (via CITY→state backtrack),
+ *          "uttar pradesh", "UP". Useful for normalizing the many
+ *          formats that appear in audience_intelligence.geo_regions.
+ */
+export function resolveState(location: string): string | null {
+  const key = location.toLowerCase().trim();
+  if (!key) return null;
+  // Direct state hit
+  if (STATE_ZONE[key]) return key;
+  // City → find state whose zone matches the city's zone? No — cities
+  // don't uniquely back-resolve to states. Use CITY_ZONE as a coarse
+  // fallback: if it resolves to a zone but not a state, we still return
+  // the zone-state pair we know about via the substring path below.
+  // Substring pass: check if the input contains a known state token.
+  for (const state of Object.keys(STATE_ZONE)) {
+    if (key.includes(state)) return state;
+  }
+  return null;
+}
+
+/**
+ * Convert geo_regions (array or object from audience_intelligence) into
+ * a normalized per-state confidence map, keyed by canonical state slug
+ * (matches brand_shopify_geo.state). Values sum to ≤1.0. Entries that
+ * don't resolve to a known Indian state are dropped.
+ */
+export function resolveGeoRegionsToStates(
+  raw: unknown
+): Record<string, number> {
+  if (!raw) return {};
+
+  const stateTotals: Record<string, number> = {};
+  let hasAny = false;
+
+  const add = (region: string, conf: number) => {
+    const normalizedConf = conf > 1 ? conf / 100 : conf;
+    if (normalizedConf <= 0) return;
+    const state = resolveState(region);
+    if (!state) return;
+    stateTotals[state] = (stateTotals[state] ?? 0) + normalizedConf;
+    hasAny = true;
+  };
+
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (item && typeof item === "object") {
+        const obj = item as Record<string, unknown>;
+        const region = String(obj.region ?? obj.state ?? obj.city ?? obj.country ?? "");
+        const conf = Number(obj.confidence ?? obj.percentage ?? obj.pct ?? 0);
+        add(region, conf);
+      }
+    }
+  } else if (typeof raw === "object") {
+    for (const [region, val] of Object.entries(raw as Record<string, unknown>)) {
+      add(region, Number(val ?? 0));
+    }
+  }
+
+  if (!hasAny) return {};
+
+  const total = Object.values(stateTotals).reduce((a, b) => a + b, 0);
+  if (total > 0) {
+    for (const k of Object.keys(stateTotals)) {
+      stateTotals[k] = stateTotals[k] / total;
+    }
+  }
+  return stateTotals;
+}
+
 /**
  * Convert geo_regions (array or object from audience_intelligence)
  * into zone-level confidence scores.

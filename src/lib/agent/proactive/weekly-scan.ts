@@ -24,7 +24,7 @@ export async function scanNewMatchingCreators(supabase: SupabaseClient) {
       .from("creator_brand_matches")
       .select("creator_id, match_score")
       .eq("brand_id", brandId)
-      .gte("match_score", 70)
+      .gte("match_score", 0.7)
       .gte("created_at", weekAgo.toISOString())
       .order("match_score", { ascending: false })
       .limit(10);

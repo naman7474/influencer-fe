@@ -11,7 +11,9 @@ export function warmLeadDetectorTool(brandId: string, supabase: SupabaseClient) 
         .number()
         .optional()
         .default(50)
-        .describe("Minimum brand match score"),
+        .describe(
+          "Minimum brand match score (0-100 scale). Default 50."
+        ),
       limit: z
         .number()
         .optional()
@@ -19,6 +21,10 @@ export function warmLeadDetectorTool(brandId: string, supabase: SupabaseClient) 
         .describe("Max results (1-25)"),
     }),
     execute: async (params) => {
+      // match_score is stored as 0-1 in the DB, but the tool's param is
+      // exposed as 0-100 to the LLM for natural-language friendliness.
+      const minScore01 = (params.min_match_score ?? 50) / 100;
+
       // 1. Find creators who already mention the brand
       const { data: matchesRaw } = await supabase
         .from("creator_brand_matches")
@@ -27,7 +33,7 @@ export function warmLeadDetectorTool(brandId: string, supabase: SupabaseClient) 
         )
         .eq("brand_id", brandId)
         .eq("already_mentions_brand", true)
-        .gte("match_score", params.min_match_score ?? 50)
+        .gte("match_score", minScore01)
         .order("match_score", { ascending: false })
         .limit(50);
       const matches = (matchesRaw || []) as Record<string, unknown>[];

@@ -227,6 +227,32 @@ export default async function DashboardPage() {
 
   const geoData = (geoRows ?? []) as BrandShopifyGeo[];
 
+  // 5b. Overlay fresh classifications from v_brand_geo_gaps (the view
+  // recomputes problem_type on read, so stored problem_type is ignored).
+  if (geoData.length > 0) {
+    const { data: gapRows } = await supabase
+      .from("v_brand_geo_gaps" as never)
+      .select("state, city, problem_type_current")
+      .eq("brand_id", brand.id);
+    const gapMap = new Map<string, string>();
+    for (const r of (gapRows ?? []) as Array<{
+      state: string | null;
+      city: string | null;
+      problem_type_current: string | null;
+    }>) {
+      const key = `${(r.city ?? "").toLowerCase()}|${(r.state ?? "").toLowerCase()}`;
+      if (r.problem_type_current) gapMap.set(key, r.problem_type_current);
+    }
+    for (const g of geoData) {
+      const key = `${(g.city ?? "").toLowerCase()}|${(g.state ?? "").toLowerCase()}`;
+      const fresh = gapMap.get(key);
+      if (fresh) {
+        (g as BrandShopifyGeo).problem_type =
+          fresh as BrandShopifyGeo["problem_type"];
+      }
+    }
+  }
+
   // ── 6. Render ───────────────────────────────────────────────────────
   return (
     <DashboardClient

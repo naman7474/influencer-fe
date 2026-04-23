@@ -14,7 +14,8 @@ import type {
 import {
   buildCreatorZoneProfile,
   buildBrandZoneNeeds,
-  computeZoneGeoScore,
+  resolveState,
+  resolveGeoRegionsToStates,
   resolveZone,
   type IndiaZone,
   ZONE_LABELS,
@@ -890,10 +891,63 @@ export async function computeMatchesForBrand(
     }
   }
 
-  // ── 4b. Build brand zone needs (once, for all creators) ────────────
-  // Derive target zones from brand's shipping_zones (cities → zones)
+  // ── 4b. Build brand zone needs (dashboard uses this) ───────────────
   const brandTargetZones = deriveBrandTargetZones(brand);
-  const brandZoneNeeds = buildBrandZoneNeeds(brandGeoData, brandTargetZones.length > 0 ? brandTargetZones : undefined);
+  const brandZoneNeeds = buildBrandZoneNeeds(
+    brandGeoData,
+    brandTargetZones.length > 0 ? brandTargetZones : undefined
+  );
+
+  // ── 4c. Fetch per-state gap classification from v_brand_geo_gaps ───
+  // This view recomputes problem_type on read, so stale/partial sync
+  // rows don't feed into the matcher. Matching engine reads this
+  // directly instead of trusting brand_shopify_geo.problem_type.
+  const { data: gapRowsRaw } = await supabase
+    .from("v_brand_geo_gaps" as never)
+    .select(
+      "state, city, gap_score, problem_type_current, pop_weight, session_share, order_share"
+    )
+    .eq("brand_id", brandId);
+  type GapRow = {
+    state: string | null;
+    city: string | null;
+    gap_score: number | null;
+    problem_type_current: string | null;
+    pop_weight: number | null;
+    session_share: number | null;
+    order_share: number | null;
+  };
+  const brandGapRows = (gapRowsRaw ?? []) as GapRow[];
+
+  // State → { problemType, gapWeight }. gapWeight is what a creator
+  // whose audience sits in this state is worth:
+  //   awareness_gap / conversion_gap:  0.6 + gap_score × 0.4  (∈ [0.6, 1.0])
+  //   strong_market:                   0.5                    (loyalty value)
+  //   untracked:                       0
+  const brandStateGaps = new Map<
+    string,
+    { problemType: string; gapWeight: number }
+  >();
+  for (const row of brandGapRows) {
+    const state = resolveState(row.state ?? "") ?? resolveState(row.city ?? "");
+    if (!state) continue;
+    const pt = row.problem_type_current ?? "untracked";
+    let gapWeight: number;
+    if (pt === "awareness_gap" || pt === "conversion_gap") {
+      const g = Math.max(0, Math.min(1, row.gap_score ?? 0));
+      gapWeight = 0.6 + g * 0.4;
+    } else if (pt === "strong_market") {
+      gapWeight = 0.5;
+    } else {
+      gapWeight = 0;
+    }
+    // If multiple rows per state (e.g. with city), keep the max.
+    const prev = brandStateGaps.get(state);
+    if (!prev || gapWeight > prev.gapWeight) {
+      brandStateGaps.set(state, { problemType: pt, gapWeight });
+    }
+  }
+  const brandHasGapData = brandStateGaps.size > 0;
 
   // ── 5. Compute match scores for each creator ───────────────────────
   const brandCategories = brand.product_categories ?? [];
@@ -913,7 +967,9 @@ export async function computeMatchesForBrand(
       captionIntel?.primary_niche ?? creator.primary_niche ?? null;
     const secondaryNiche = captionIntel?.secondary_niche ?? null;
 
-    // Build multi-signal zone profile for this creator
+    // Build multi-signal zone profile for this creator (used for
+    // dashboard-facing geo_match_regions and as a fallback when the
+    // audience intel doesn't resolve to any state).
     const creatorZoneProfile = buildCreatorZoneProfile({
       geoRegions: audienceIntel?.geo_regions,
       spokenLanguage: transcriptIntel?.primary_spoken_language ?? null,
@@ -921,13 +977,53 @@ export async function computeMatchesForBrand(
       creatorCountry: creator.country,
     });
 
+    // Build per-state audience share for this creator (sums to ≤1).
+    // Priority: comment-inferred geo_regions → creator's own location.
+    let creatorStateShares: Record<string, number> =
+      resolveGeoRegionsToStates(audienceIntel?.geo_regions);
+    if (Object.keys(creatorStateShares).length === 0) {
+      const locState =
+        resolveState(creator.city ?? "") ??
+        resolveState(creator.country ?? "");
+      if (locState) creatorStateShares = { [locState]: 1 };
+    }
+
     // Sub-scores
     const nicheFit = computeNicheFit(
       primaryNiche,
       secondaryNiche,
       brandCategories
     );
-    const audienceGeo = computeZoneGeoScore(creatorZoneProfile, brandZoneNeeds);
+    // State-level gap overlap (replaces zone-opportunity blending).
+    //   - Σ creator_state_share × brand_state_gap_weight
+    //   - Neutral 0.3 if brand has no geo data OR creator has no state signal.
+    let audienceGeo: number;
+    let dominantProblemType: string | null = null;
+    if (!brandHasGapData || Object.keys(creatorStateShares).length === 0) {
+      audienceGeo = 0.3;
+    } else {
+      let overlap = 0;
+      const perTypeOverlap: Record<string, number> = {};
+      for (const [state, share] of Object.entries(creatorStateShares)) {
+        const gap = brandStateGaps.get(state);
+        if (!gap) continue;
+        const contrib = share * gap.gapWeight;
+        overlap += contrib;
+        perTypeOverlap[gap.problemType] =
+          (perTypeOverlap[gap.problemType] ?? 0) + contrib;
+      }
+      audienceGeo = Math.min(1, 0.1 + overlap * 0.9);
+      // Pick the problem_type carrying the most overlap as the hint.
+      let bestType: string | null = null;
+      let bestValue = 0;
+      for (const [t, v] of Object.entries(perTypeOverlap)) {
+        if (v > bestValue) {
+          bestValue = v;
+          bestType = t;
+        }
+      }
+      dominantProblemType = bestType;
+    }
     const budgetFit = computeBudgetFit(
       brand.budget_per_creator_min,
       brand.budget_per_creator_max,
@@ -1099,13 +1195,43 @@ export async function computeMatchesForBrand(
 
     const mentionsCompetitor = competitorBonus > 1.0;
 
-    // Determine which zones matched (using zone profile + brand needs)
+    // Determine which regions matched.
+    // Primary: list states where the creator's audience sits that are
+    // also gap/strong-market states for the brand. Fall back to the
+    // zone-level view if we don't have state-granular data.
     const matchedGeoRegions: string[] = [];
-    for (const zone of ["north", "south", "east", "west"] as IndiaZone[]) {
-      if (creatorZoneProfile[zone] > 0.1 && brandZoneNeeds[zone].opportunity > 0) {
-        matchedGeoRegions.push(ZONE_LABELS[zone]);
+    if (brandHasGapData && Object.keys(creatorStateShares).length > 0) {
+      const matched = Object.entries(creatorStateShares)
+        .filter(([state, share]) => {
+          if (share < 0.05) return false;
+          const gap = brandStateGaps.get(state);
+          return !!(gap && gap.gapWeight > 0);
+        })
+        .sort((a, b) => b[1] - a[1])
+        .map(([state]) => state);
+      for (const s of matched.slice(0, 5)) matchedGeoRegions.push(s);
+    } else {
+      for (const zone of ["north", "south", "east", "west"] as IndiaZone[]) {
+        if (
+          creatorZoneProfile[zone] > 0.1 &&
+          brandZoneNeeds[zone].opportunity > 0
+        ) {
+          matchedGeoRegions.push(ZONE_LABELS[zone]);
+        }
       }
     }
+
+    // recommended_for: if the creator overlaps a dominant gap type,
+    // that's the right campaign goal. Otherwise fall back to the
+    // brand-level default_campaign_goal.
+    const recommendedFor: string =
+      dominantProblemType === "awareness_gap"
+        ? "awareness"
+        : dominantProblemType === "conversion_gap"
+          ? "conversion"
+          : dominantProblemType === "strong_market"
+            ? (brand.default_campaign_goal ?? "awareness")
+            : (brand.default_campaign_goal ?? "awareness");
 
     const reasoning = generateMatchReasoning(
       nicheFit,
@@ -1153,7 +1279,7 @@ export async function computeMatchesForBrand(
       already_mentions_brand: alreadyMentionsBrand,
       mentions_competitor: mentionsCompetitor,
       geo_match_regions: matchedGeoRegions as unknown as Database["public"]["Tables"]["creator_brand_matches"]["Insert"]["geo_match_regions"],
-      recommended_for: brand.default_campaign_goal,
+      recommended_for: recommendedFor,
       match_reasoning: reasoning,
       match_score_breakdown: breakdown as unknown as Database["public"]["Tables"]["creator_brand_matches"]["Insert"]["match_score_breakdown"],
       used_ig_signals: hasIgAnalysis,

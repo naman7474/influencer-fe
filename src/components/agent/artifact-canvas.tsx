@@ -469,7 +469,9 @@ function CreatorsCanvasView({ data, onSend }: { data: Record<string, unknown>; o
           const er = c.engagement_rate ?? c.er;
           const cpe = c.cpe ?? c.cpi_score;
           const price = Number(c.price ?? c.rate ?? 0);
-          const match = Number(c.match_score ?? c.match ?? 0);
+          const rawMatch = Number(c.match_score ?? c.match ?? 0);
+          // match_score is 0-1; legacy rows may be 0-100. Normalize to 0-100.
+          const match = rawMatch > 1 ? Math.round(rawMatch) : Math.round(rawMatch * 100);
 
           return (
             <div

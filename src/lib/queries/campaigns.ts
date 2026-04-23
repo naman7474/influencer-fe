@@ -144,11 +144,20 @@ export async function addCreatorToCampaign(
   creatorId: string,
   matchScore: number | null,
 ): Promise<void> {
+  // match_score_at_assignment is a 0-100 column for display continuity.
+  // The matching engine writes creator_brand_matches.match_score as 0-1,
+  // so scale up here. Values >1 are treated as already on the 0-100 scale.
+  const scorePct =
+    matchScore == null
+      ? null
+      : matchScore > 1
+        ? Math.round(matchScore * 10) / 10
+        : Math.round(matchScore * 1000) / 10;
   const { error } = await supabase.from("campaign_creators").insert({
     campaign_id: campaignId,
     creator_id: creatorId,
     status: "shortlisted",
-    match_score_at_assignment: matchScore,
+    match_score_at_assignment: scorePct,
   } as never);
 
   if (error) {

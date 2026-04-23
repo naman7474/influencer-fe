@@ -424,12 +424,16 @@ function TierBadge({ tier }: { tier: string }) {
 
 function MatchBadge({ score }: { score: number }) {
   const color =
-    score >= 80
+    score >= 0.8
       ? "text-green-600 dark:text-green-400"
-      : score >= 60
+      : score >= 0.6
         ? "text-yellow-600 dark:text-yellow-400"
         : "text-muted-foreground";
-  return <span className={`font-medium ${color}`}>{score}%</span>;
+  return (
+    <span className={`font-medium ${color}`}>
+      {Math.round(score * 100)}%
+    </span>
+  );
 }
 
 function StatusBadge({ status }: { status: string }) {

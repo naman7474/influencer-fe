@@ -280,6 +280,12 @@ export function DashboardClient({
 
         {shopifyConnected && geoData.length > 0 ? (
           <div className="space-y-4">
+            {!geoData.some((r) => (r.sessions ?? 0) > 0) && (
+              <p className="text-xs text-muted-foreground">
+                Session and conversion-rate stats require Shopify Plus.
+                Classifications below are based on orders and population.
+              </p>
+            )}
             {/* Zone summary cards */}
             <ZoneSummary geoData={geoData} brand={brand} />
 
@@ -289,7 +295,16 @@ export function DashboardClient({
               const regionName = [region.city, region.state, region.country]
                 .filter(Boolean)
                 .join(", ");
-              const gapPercent = Math.min(100, Math.round(region.gap_score ?? 0));
+              // gap_score is stored as a signed 0-1 float; a positive
+              // value means under-indexed vs population. Scale to 0-100
+              // for display and clamp negative values to 0.
+              const gapPercent = Math.round(
+                Math.max(0, Math.min(1, region.gap_score ?? 0)) * 100
+              );
+              const hasSessions =
+                region.sessions != null && region.sessions > 0;
+              const hasCvr =
+                region.conversion_rate != null && region.conversion_rate > 0;
 
               return (
                 <Card key={region.id} className="overflow-hidden">
@@ -332,11 +347,11 @@ export function DashboardClient({
 
                     {/* Stats row */}
                     <div className="flex gap-4 text-xs text-muted-foreground">
-                      {region.sessions != null && (
+                      {hasSessions && (
                         <span>
                           Sessions:{" "}
                           <span className="font-mono font-medium text-foreground">
-                            {region.sessions.toLocaleString()}
+                            {region.sessions!.toLocaleString()}
                           </span>
                         </span>
                       )}
@@ -348,11 +363,11 @@ export function DashboardClient({
                           </span>
                         </span>
                       )}
-                      {region.conversion_rate != null && (
+                      {hasCvr && (
                         <span>
                           CVR:{" "}
                           <span className="font-mono font-medium text-foreground">
-                            {(region.conversion_rate * 100).toFixed(1)}%
+                            {(region.conversion_rate! * 100).toFixed(1)}%
                           </span>
                         </span>
                       )}
