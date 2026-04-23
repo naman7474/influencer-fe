@@ -74,27 +74,19 @@ interface Props {
 /* ------------------------------------------------------------------ */
 
 function StatusIcon({ status }: { status: string }) {
-  switch (status) {
-    case "draft":
-      return <Pencil className="size-3.5 text-muted-foreground" />;
-    case "queued":
-      return <Clock className="size-3.5 text-muted-foreground" />;
-    case "sent":
-      return <Check className="size-3.5 text-muted-foreground" />;
-    case "delivered":
-      return <CheckCheck className="size-3.5 text-muted-foreground" />;
-    case "opened":
-      return <Eye className="size-3.5 text-blue-500" />;
-    case "replied":
-      return <MessageSquare className="size-3.5 text-green-500" />;
-    case "bounced":
-    case "failed":
-      return <AlertCircle className="size-3.5 text-destructive" />;
-    case "negotiating":
-      return <MessageSquare className="size-3.5 text-amber-500" />;
-    default:
-      return <Mail className="size-3.5 text-muted-foreground" />;
-  }
+  const dotColor = (() => {
+    switch (status) {
+      case "replied": return "bg-success";
+      case "opened": return "bg-info";
+      case "negotiating": return "bg-warning";
+      case "bounced":
+      case "failed": return "bg-destructive";
+      case "sent":
+      case "delivered": return "bg-muted-foreground";
+      default: return "bg-muted-foreground/50";
+    }
+  })();
+  return <span className={cn("size-2 rounded-full shrink-0", dotColor)} />;
 }
 
 function statusLabel(status: string): string {
@@ -205,13 +197,13 @@ export function OutreachClient({ brand, campaigns }: Props) {
       {/* ── Thread List Panel ──────────────────────────────────────── */}
       <div
         className={cn(
-          "w-full md:w-[340px] lg:w-[360px] flex flex-col border-r shrink-0",
+          "w-full md:w-[360px] lg:w-[380px] flex flex-col border-r shrink-0",
           selectedThreadId && "hidden md:flex"
         )}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b">
-          <h1 className="text-lg font-semibold">Outreach</h1>
+          <h1 className="font-serif text-lg">Outreach</h1>
           <Button size="sm" onClick={() => setComposeOpen(true)}>
             <Plus className="size-4 mr-1" />
             Compose

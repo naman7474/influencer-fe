@@ -45,7 +45,7 @@ const agentNavItems: NavItem[] = [
   { label: "Automations", href: "/agent/automations", icon: Zap },
   { label: "Memory", href: "/agent/memory", icon: Brain },
   { label: "Approvals", href: "/approvals", icon: CheckSquare },
-  { label: "Agent Config", href: "/agent/config", icon: SlidersHorizontal },
+  { label: "Illaya Config", href: "/agent/config", icon: SlidersHorizontal },
 ];
 
 interface MobileSidebarProps {
@@ -100,10 +100,10 @@ export function MobileSidebar({ brand, onNavigate }: MobileSidebarProps) {
 
         <Separator className="my-3" />
 
-        {/* AI Agent section label */}
+        {/* Illaya section label */}
         <div className="px-3 mb-1">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-            AI Agent
+            Illaya
           </span>
         </div>
 

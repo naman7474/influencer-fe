@@ -143,11 +143,11 @@ export default function AgentConfigPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            Agent Configuration
+          <h1 className="font-serif italic text-2xl tracking-tight text-foreground">
+            Illaya Configuration
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Customize your agent&apos;s personality, autonomy levels, and behavior rules.
+            Customize Illaya&apos;s personality, autonomy levels, and behavior rules.
           </p>
         </div>
         <Button onClick={handleSave} disabled={saving}>

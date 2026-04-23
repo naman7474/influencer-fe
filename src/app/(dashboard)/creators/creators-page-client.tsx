@@ -170,7 +170,7 @@ export function CreatorsPageClient({
             <ArrowLeft className="size-4" />
           </Button>
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            <h1 className="font-serif text-2xl tracking-tight text-foreground">
               {selectedList.name}
             </h1>
             {selectedList.description && (
@@ -291,7 +291,7 @@ export function CreatorsPageClient({
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          <h1 className="font-serif text-2xl tracking-tight text-foreground">
             My Creators
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -366,6 +366,15 @@ export function CreatorsPageClient({
               </CardContent>
             </Card>
           ))}
+
+          {/* New List card */}
+          <button
+            onClick={() => setShowNewDialog(true)}
+            className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-10 text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+          >
+            <Plus className="size-6" />
+            <span className="text-sm font-medium">New List</span>
+          </button>
         </div>
       )}
 

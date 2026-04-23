@@ -9,48 +9,44 @@ import {
 } from "@/components/ui/tabs";
 
 interface TabContainerProps {
-  overviewTab: ReactNode;
-  contentTab: ReactNode;
-  audienceTab: ReactNode;
-  performanceTab: ReactNode;
-  historyTab: ReactNode;
+  fitTab: ReactNode;
+  credibilityTab: ReactNode;
+  impactTab: ReactNode;
+  commerceTab: ReactNode;
 }
 
 export function TabContainer({
-  overviewTab,
-  contentTab,
-  audienceTab,
-  performanceTab,
-  historyTab,
+  fitTab,
+  credibilityTab,
+  impactTab,
+  commerceTab,
 }: TabContainerProps) {
   return (
-    <Tabs defaultValue="overview">
-      <TabsList variant="line" className="w-full justify-start border-b border-border">
-        <TabsTrigger value="overview">Overview</TabsTrigger>
-        <TabsTrigger value="content">Content</TabsTrigger>
-        <TabsTrigger value="audience">Audience</TabsTrigger>
-        <TabsTrigger value="performance">Performance</TabsTrigger>
-        <TabsTrigger value="history">History</TabsTrigger>
+    <Tabs defaultValue="fit">
+      <TabsList
+        variant="line"
+        className="w-full justify-start border-b border-border"
+      >
+        <TabsTrigger value="fit">Fit</TabsTrigger>
+        <TabsTrigger value="credibility">Credibility</TabsTrigger>
+        <TabsTrigger value="impact">Impact</TabsTrigger>
+        <TabsTrigger value="commerce">Commerce</TabsTrigger>
       </TabsList>
 
-      <TabsContent value="overview" className="pt-6">
-        {overviewTab}
+      <TabsContent value="fit" className="pt-6">
+        {fitTab}
       </TabsContent>
 
-      <TabsContent value="content" className="pt-6">
-        {contentTab}
+      <TabsContent value="credibility" className="pt-6">
+        {credibilityTab}
       </TabsContent>
 
-      <TabsContent value="audience" className="pt-6">
-        {audienceTab}
+      <TabsContent value="impact" className="pt-6">
+        {impactTab}
       </TabsContent>
 
-      <TabsContent value="performance" className="pt-6">
-        {performanceTab}
-      </TabsContent>
-
-      <TabsContent value="history" className="pt-6">
-        {historyTab}
+      <TabsContent value="commerce" className="pt-6">
+        {commerceTab}
       </TabsContent>
     </Tabs>
   );

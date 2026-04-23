@@ -107,6 +107,21 @@ export async function POST(request: NextRequest) {
       tokenResult.accessToken
     );
 
+    // Enqueue an initial geo-sync job (180-day window). Duplicates are
+    // suppressed by uq_background_jobs_active_per_brand.
+    await supabase
+      .from("background_jobs")
+      .insert({
+        job_type: "shopify_geo_sync",
+        brand_id: brand.id,
+        payload: { mode: "initial", window_days: 180 },
+        status: "queued",
+      } as never);
+    await supabase
+      .from("brands")
+      .update({ shopify_geo_sync_status: "queued" } as never)
+      .eq("id", brand.id);
+
     return NextResponse.json({
       success: true,
       message: "Shopify connected successfully.",

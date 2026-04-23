@@ -1,0 +1,287 @@
+{
+  "$defs": {
+    "AudienceAuthenticity": {
+      "properties": {
+        "authenticity_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authenticity Score"
+        },
+        "emoji_only_percentage": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Emoji Only Percentage"
+        },
+        "generic_comment_percentage": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Generic Comment Percentage"
+        },
+        "substantive_comment_percentage": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Substantive Comment Percentage"
+        },
+        "suspicious_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Suspicious Patterns",
+          "type": "array"
+        }
+      },
+      "title": "AudienceAuthenticity",
+      "type": "object"
+    },
+    "AudienceDemographics": {
+      "properties": {
+        "estimated_age_group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Age Group"
+        },
+        "estimated_gender_skew": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Gender Skew"
+        },
+        "interest_signals": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Interest Signals",
+          "type": "array"
+        }
+      },
+      "title": "AudienceDemographics",
+      "type": "object"
+    },
+    "AudienceGeoSplit": {
+      "properties": {
+        "domestic_percentage": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Domestic Percentage"
+        },
+        "primary_country": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Primary Country"
+        }
+      },
+      "title": "AudienceGeoSplit",
+      "type": "object"
+    },
+    "AudienceGeographyInference": {
+      "properties": {
+        "domestic_vs_international_split": {
+          "$ref": "#/$defs/AudienceGeoSplit"
+        },
+        "regions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Regions",
+          "type": "array"
+        }
+      },
+      "title": "AudienceGeographyInference",
+      "type": "object"
+    },
+    "AudienceLanguageDistribution": {
+      "properties": {
+        "languages": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Languages",
+          "type": "object"
+        },
+        "multilingual_audience": {
+          "default": false,
+          "title": "Multilingual Audience",
+          "type": "boolean"
+        },
+        "primary_audience_language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Primary Audience Language"
+        }
+      },
+      "title": "AudienceLanguageDistribution",
+      "type": "object"
+    },
+    "AudienceSentiment": {
+      "properties": {
+        "common_negative_themes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Common Negative Themes",
+          "type": "array"
+        },
+        "common_positive_themes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Common Positive Themes",
+          "type": "array"
+        },
+        "overall_sentiment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Overall Sentiment"
+        },
+        "sentiment_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sentiment Score"
+        }
+      },
+      "title": "AudienceSentiment",
+      "type": "object"
+    },
+    "EngagementQuality": {
+      "properties": {
+        "community_feel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Community Feel"
+        },
+        "conversation_depth": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Depth"
+        },
+        "quality_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quality Score"
+        }
+      },
+      "title": "EngagementQuality",
+      "type": "object"
+    }
+  },
+  "$id": "https://influencer.local/schemas/audience_intelligence.schema.json",
+  "properties": {
+    "audience_authenticity": {
+      "$ref": "#/$defs/AudienceAuthenticity"
+    },
+    "audience_demographics_inference": {
+      "$ref": "#/$defs/AudienceDemographics"
+    },
+    "audience_geography_inference": {
+      "$ref": "#/$defs/AudienceGeographyInference"
+    },
+    "audience_language_distribution": {
+      "$ref": "#/$defs/AudienceLanguageDistribution"
+    },
+    "audience_sentiment": {
+      "$ref": "#/$defs/AudienceSentiment"
+    },
+    "engagement_quality": {
+      "$ref": "#/$defs/EngagementQuality"
+    }
+  },
+  "title": "AudienceIntelligencePayload",
+  "type": "object"
+}

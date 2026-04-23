@@ -21,15 +21,27 @@ import {
 } from "@/lib/geo/india";
 import {
   computeBrandSafety,
+  DEFAULT_BRAND_SAFETY_CALIBRATION,
+  type BrandSafetyCalibration,
   type CaptionIntelForSafety,
   type AudienceIntelForSafety,
   type CreatorScoresForSafety,
   type BrandSafetyConfig,
+  type BrandSafetyResult,
 } from "./brand-safety";
+import { loadAllCalibrations } from "./calibration";
 
 // ── Constants ─────────────────────────────────────────────────────────
 
-const ALGORITHM_VERSION = "3.1.0";
+const ALGORITHM_VERSION = "3.2.0";
+
+/** Floor for brand-safety multiplier so a missing safety reading
+ *  can't zero out the composite; also used when score is null. */
+const BRAND_SAFETY_MOD_FLOOR = 0.3;
+
+/** Below this confidence on a data-quality envelope we taper the
+ *  sub-score weight linearly toward zero. */
+const DATA_QUALITY_TAPER_THRESHOLD = 0.5;
 
 export const NICHE_ADJACENCY: Record<string, string[]> = {
   beauty: ["skincare", "fashion", "lifestyle"],
@@ -521,6 +533,102 @@ export function computeCollabNetworkBonus(
 
 // ── Match reasoning generator ─────────────────────────────────────────
 
+/**
+ * Tapers a sub-score's weight toward zero as data-quality confidence drops
+ * below DATA_QUALITY_TAPER_THRESHOLD. Returns the effective (possibly
+ * reduced) weight; the caller is responsible for renormalizing.
+ */
+function taperedWeight(
+  baseWeight: number,
+  dataQualityConfidence: number | null | undefined
+): number {
+  if (dataQualityConfidence == null) return baseWeight;
+  if (dataQualityConfidence >= DATA_QUALITY_TAPER_THRESHOLD) return baseWeight;
+  return baseWeight * (dataQualityConfidence / DATA_QUALITY_TAPER_THRESHOLD);
+}
+
+/**
+ * Applies linear data-quality tapering to sub-score weights based on the
+ * intelligence envelopes feeding each sub-score, and renormalizes so the
+ * remaining weights still sum to 1.0 exactly.
+ *
+ * Contribution map (which envelope(s) feed which sub-score):
+ *   niche_fit            ← caption
+ *   semantic_similarity  ← (brand.content_embedding; no creator envelope)
+ *   past_collab_similarity ← (pool embedding; no creator envelope)
+ *   audience_geo         ← audience
+ *   budget_fit           ← (tier; no envelope)
+ *   content_format       ← (scores; no envelope)
+ *   engagement_quality   ← (scores; no envelope)
+ */
+function applyDataQualityAdjustments(
+  weights: Record<string, number>,
+  envelopes: {
+    caption_confidence: number | null;
+    audience_confidence: number | null;
+  }
+): { adjusted: Record<string, number>; effective_confidence: number } {
+  const contribution: Record<string, number | null> = {
+    niche_fit: envelopes.caption_confidence,
+    semantic_similarity: envelopes.caption_confidence,
+    past_collab_similarity: envelopes.caption_confidence,
+    audience_geo: envelopes.audience_confidence,
+    budget_fit: null,
+    content_format: null,
+    engagement_quality: null,
+  };
+
+  const tapered: Record<string, number> = {};
+  let totalTapered = 0;
+  for (const key of Object.keys(weights)) {
+    const base = weights[key];
+    const conf = contribution[key] ?? null;
+    const w = taperedWeight(base, conf);
+    tapered[key] = w;
+    totalTapered += w;
+  }
+
+  if (totalTapered <= 0) {
+    return { adjusted: weights, effective_confidence: 0 };
+  }
+
+  const adjusted: Record<string, number> = {};
+  for (const key of Object.keys(tapered)) {
+    adjusted[key] = tapered[key] / totalTapered;
+  }
+
+  // Harmonic-mean of non-null envelope confidences, weighted by
+  // how much of the original weight they back.
+  const contribs: Array<{ conf: number; weight: number }> = [];
+  for (const key of Object.keys(weights)) {
+    const c = contribution[key];
+    if (c != null) contribs.push({ conf: Math.max(c, 0.01), weight: weights[key] });
+  }
+  let effective_confidence = 1.0;
+  if (contribs.length) {
+    const wsum = contribs.reduce((s, x) => s + x.weight, 0);
+    const denom = contribs.reduce((s, x) => s + x.weight / x.conf, 0);
+    effective_confidence = wsum / denom;
+  }
+  return { adjusted, effective_confidence };
+}
+
+/** Binary-search percentile with tie handling (ties share the same rank). */
+export function computePercentileInPool(score: number, sortedDescScores: number[]): number {
+  if (!sortedDescScores.length) return 0;
+  // Number of scores strictly greater than this one
+  let lo = 0;
+  let hi = sortedDescScores.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (sortedDescScores[mid] > score) lo = mid + 1;
+    else hi = mid;
+  }
+  const rank = lo; // count of scores strictly greater
+  const pct = ((sortedDescScores.length - rank) / sortedDescScores.length) * 100;
+  return Math.round(pct * 10) / 10;
+}
+
 function generateMatchReasoning(
   nicheFit: number,
   audienceGeo: number,
@@ -668,14 +776,23 @@ export async function computeMatchesForBrand(
     forbidden_topics: guidelines?.forbidden_topics ?? [],
   };
 
+  // Pull the current percentile snapshot once per batch so sub-score
+  // cutoffs match the live cohort rather than 2023-vintage folklore.
+  // Falls back to DEFAULT_BRAND_SAFETY_CALIBRATION when the table is
+  // empty; `brand-safety.ts` only actually uses these when
+  // BRAND_MATCH_CALIBRATED=true.
+  const calibrationSnapshot: BrandSafetyCalibration = await loadAllCalibrations(
+    supabase,
+  ).catch(() => DEFAULT_BRAND_SAFETY_CALIBRATION);
+
   const [captionResult, audienceResult, scoresResult, transcriptResult] = await Promise.all([
     supabase
       .from("caption_intelligence")
-      .select("creator_id, primary_niche, secondary_niche, primary_tone, secondary_tone, formality_score, engagement_bait_score, vulnerability_openness, recurring_topics, brand_categories")
+      .select("creator_id, primary_niche, secondary_niche, primary_tone, secondary_tone, formality_score, engagement_bait_score, vulnerability_openness, recurring_topics, brand_categories, data_quality")
       .in("creator_id", creatorIds),
     supabase
       .from("audience_intelligence")
-      .select("creator_id, geo_regions, authenticity_score, suspicious_patterns, sentiment_score, negative_themes, estimated_age_group")
+      .select("creator_id, geo_regions, authenticity_score, suspicious_patterns, sentiment_score, negative_themes, estimated_age_group, data_quality")
       .in("creator_id", creatorIds),
     supabase
       .from("creator_scores")
@@ -698,6 +815,7 @@ export async function computeMatchesForBrand(
     vulnerability_openness: number | null;
     recurring_topics: string[] | null;
     brand_categories: string[] | null;
+    data_quality: { confidence?: number | null; coverage_percentage?: number | null } | null;
   };
   const captionMap = new Map<string, CaptionRow>();
   for (const row of (captionResult.data ?? []) as Array<{ creator_id: string } & CaptionRow>) {
@@ -711,6 +829,7 @@ export async function computeMatchesForBrand(
     sentiment_score: number | null;
     negative_themes: string[] | null;
     estimated_age_group: string | null;
+    data_quality: { confidence?: number | null; coverage_percentage?: number | null } | null;
   };
   const audienceMap = new Map<string, AudienceRow>();
   for (const row of (audienceResult.data ?? []) as Array<{ creator_id: string } & AudienceRow>) {
@@ -853,13 +972,19 @@ export async function computeMatchesForBrand(
         }
       : null;
 
-    const brandSafety = computeBrandSafety(
+    const brandSafety: BrandSafetyResult = computeBrandSafety(
       captionSafety,
       audienceSafety,
       scoresSafety,
-      brandSafetyConfig
+      brandSafetyConfig,
+      calibrationSnapshot,
     );
-    const brandSafetyMod = Math.max(0.3, brandSafety);
+    const brandSafetyScoreForOutput = brandSafety.score ?? 0;
+    const brandSafetyMod =
+      brandSafety.score === null
+        ? BRAND_SAFETY_MOD_FLOOR
+        : Math.max(BRAND_SAFETY_MOD_FLOOR, brandSafety.score);
+    const manualReviewRequired = brandSafety.manual_review_required;
 
     // Modifiers
     const competitorBonus = computeCompetitorBonus(
@@ -887,20 +1012,47 @@ export async function computeMatchesForBrand(
       ? computeCollabNetworkBonus(creator.handle, brandCollaborators)
       : 1.0;
 
-    // Composite score — branch on whether we have IG signals
-    const rawScore = hasIgAnalysis
-      ? nicheFit * WEIGHTS_WITH_IG.niche_fit +
-        semanticSimilarity * WEIGHTS_WITH_IG.semantic_similarity +
-        pastCollabSimilarity * WEIGHTS_WITH_IG.past_collab_similarity +
-        audienceGeo * WEIGHTS_WITH_IG.audience_geo +
-        budgetFit * WEIGHTS_WITH_IG.budget_fit +
-        formatFit * WEIGHTS_WITH_IG.content_format +
-        engagementQuality * WEIGHTS_WITH_IG.engagement_quality
-      : nicheFit * WEIGHTS.niche_fit +
-        audienceGeo * WEIGHTS.audience_geo +
-        budgetFit * WEIGHTS.budget_fit +
-        formatFit * WEIGHTS.content_format +
-        engagementQuality * WEIGHTS.engagement_quality;
+    // ── Data-quality tapering ────────────────────────────────────
+    const captionConfidence =
+      typeof captionIntel?.data_quality?.confidence === "number"
+        ? captionIntel!.data_quality!.confidence!
+        : null;
+    const audienceConfidence =
+      typeof audienceIntel?.data_quality?.confidence === "number"
+        ? audienceIntel!.data_quality!.confidence!
+        : null;
+
+    const baseWeights: Record<string, number> = hasIgAnalysis
+      ? { ...WEIGHTS_WITH_IG }
+      : { ...WEIGHTS };
+    const subScoreValues: Record<string, number> = hasIgAnalysis
+      ? {
+          niche_fit: nicheFit,
+          semantic_similarity: semanticSimilarity,
+          past_collab_similarity: pastCollabSimilarity,
+          audience_geo: audienceGeo,
+          budget_fit: budgetFit,
+          content_format: formatFit,
+          engagement_quality: engagementQuality,
+        }
+      : {
+          niche_fit: nicheFit,
+          audience_geo: audienceGeo,
+          budget_fit: budgetFit,
+          content_format: formatFit,
+          engagement_quality: engagementQuality,
+        };
+
+    const { adjusted: adjustedWeights, effective_confidence: matchConfidence } =
+      applyDataQualityAdjustments(baseWeights, {
+        caption_confidence: captionConfidence,
+        audience_confidence: audienceConfidence,
+      });
+
+    let rawScore = 0;
+    for (const key of Object.keys(adjustedWeights)) {
+      rawScore += (subScoreValues[key] ?? 0) * adjustedWeights[key];
+    }
 
     const finalScore = Math.min(
       1.0,
@@ -909,6 +1061,33 @@ export async function computeMatchesForBrand(
         competitorBonus *
         themeOverlapBonus *
         collabNetworkBonus
+    );
+
+    // ── Missing-inputs & coverage tracking ──────────────────────
+    const missingInputs: string[] = [...brandSafety.missing_inputs];
+    if (captionIntel == null)
+      missingInputs.push("caption_intelligence: not available");
+    else if (captionConfidence == null)
+      missingInputs.push("caption_intelligence.data_quality.confidence missing");
+    if (audienceIntel == null)
+      missingInputs.push("audience_intelligence: not available");
+    else if (audienceConfidence == null)
+      missingInputs.push("audience_intelligence.data_quality.confidence missing");
+    if (!brandGeoData.length)
+      missingInputs.push("brand_shopify_geo: no rows");
+
+    // coverage_percentage = share of requested inputs that had real data.
+    // Buckets: [caption present+confident, audience present+confident,
+    //           brand geo rows present, creator scores present, captionIntel present].
+    const coverageBuckets: boolean[] = [
+      captionIntel != null && captionConfidence != null && captionConfidence >= 0.5,
+      audienceIntel != null && audienceConfidence != null && audienceConfidence >= 0.5,
+      brandGeoData.length > 0,
+      creatorScores != null,
+      captionIntel != null,
+    ];
+    const coveragePercentage = Math.round(
+      (coverageBuckets.filter(Boolean).length / coverageBuckets.length) * 100
     );
 
     // Check if creator mentions the brand itself
@@ -934,7 +1113,7 @@ export async function computeMatchesForBrand(
       budgetFit,
       formatFit,
       engagementQuality,
-      brandSafety,
+      brandSafetyScoreForOutput,
       competitorBonus,
       finalScore
     );
@@ -945,13 +1124,20 @@ export async function computeMatchesForBrand(
       budget_fit: budgetFit,
       content_format: formatFit,
       engagement_quality: engagementQuality,
-      brand_safety: brandSafety,
+      brand_safety: brandSafety.score,
+      brand_safety_sufficient_count: brandSafety.sufficient_count,
+      brand_safety_confidence: brandSafety.confidence,
       competitor_bonus: competitorBonus,
       semantic_similarity: semanticSimilarity,
       past_collab_similarity: pastCollabSimilarity,
       theme_overlap_bonus: themeOverlapBonus,
       collab_network_bonus: collabNetworkBonus,
       weights: hasIgAnalysis ? "with_ig" : "legacy",
+      weights_adjusted: adjustedWeights,
+      data_quality: {
+        caption_confidence: captionConfidence,
+        audience_confidence: audienceConfidence,
+      },
     };
 
     matchRows.push({
@@ -962,7 +1148,7 @@ export async function computeMatchesForBrand(
       audience_geo_score: Math.round(audienceGeo * 1000) / 1000,
       price_tier_score: Math.round(budgetFit * 1000) / 1000,
       engagement_score: Math.round(engagementQuality * 1000) / 1000,
-      brand_safety_score: Math.round(brandSafety * 1000) / 1000,
+      brand_safety_score: Math.round(brandSafetyScoreForOutput * 1000) / 1000,
       content_style_score: Math.round(formatFit * 1000) / 1000,
       already_mentions_brand: alreadyMentionsBrand,
       mentions_competitor: mentionsCompetitor,
@@ -971,9 +1157,24 @@ export async function computeMatchesForBrand(
       match_reasoning: reasoning,
       match_score_breakdown: breakdown as unknown as Database["public"]["Tables"]["creator_brand_matches"]["Insert"]["match_score_breakdown"],
       used_ig_signals: hasIgAnalysis,
+      confidence: Math.round(matchConfidence * 100) / 100,
+      coverage_percentage: coveragePercentage,
+      missing_inputs: missingInputs as unknown as never,
+      manual_review_required: manualReviewRequired,
+      // percentile_in_brand_pool filled after the loop, when we have the pool.
       computed_at: new Date().toISOString(),
       algorithm_version: ALGORITHM_VERSION,
-    });
+    } as Database["public"]["Tables"]["creator_brand_matches"]["Insert"]);
+  }
+
+  // ── 5b. Compute percentile_in_brand_pool over the pool ─────────────
+  const sortedDescScores = matchRows
+    .map((r) => r.match_score ?? 0)
+    .sort((a, b) => b - a);
+  for (const row of matchRows) {
+    const score = row.match_score ?? 0;
+    (row as Record<string, unknown>).percentile_in_brand_pool =
+      computePercentileInPool(score, sortedDescScores);
   }
 
   // ── 6. Upsert into creator_brand_matches ────────────────────────────
@@ -1000,4 +1201,109 @@ export async function computeMatchesForBrand(
   }
 
   return matchRows.length;
+}
+
+// ── Single-creator recompute ─────────────────────────────────────────
+
+/**
+ * Recomputes matches for a single creator against every brand that
+ * has shopify_connected=true OR already has brand_shopify_geo rows.
+ *
+ * Implementation: calls computeMatchesForBrand per affected brand.
+ * That recomputes the whole 200-row brand pool — slightly wider than
+ * necessary, but keeps the scoring surface consolidated in one place
+ * and correctly rebuilds the percentile distribution.
+ *
+ * 5-min debounce via brands.matches_recompute_queued_at prevents
+ * duplicate work when the same creator finishes back-to-back pipeline
+ * runs.
+ */
+export async function recomputeMatchesForCreator(
+  supabase: SupabaseClient<Database>,
+  creatorId: string
+): Promise<{ brands_recomputed: number; brands_skipped: number }> {
+  // Find brands that should care about this creator's score change.
+  const [connectedRes, geoRes] = await Promise.all([
+    supabase
+      .from("brands")
+      .select("id, matches_recompute_queued_at")
+      .eq("shopify_connected", true),
+    supabase
+      .from("brand_shopify_geo")
+      .select("brand_id")
+      .limit(5000),
+  ]);
+
+  const connectedBrands =
+    ((connectedRes.data ?? []) as Array<{
+      id: string;
+      matches_recompute_queued_at: string | null;
+    }>);
+  const geoBrandIds = new Set(
+    ((geoRes.data ?? []) as Array<{ brand_id: string }>).map(
+      (r) => r.brand_id
+    )
+  );
+
+  // All connected brands are candidates.
+  const candidateBrands = connectedBrands;
+  // Plus any geo-only brands that aren't already in the connected list.
+  const connectedIds = new Set(connectedBrands.map((b) => b.id));
+  const geoOnlyIds = Array.from(geoBrandIds).filter(
+    (id) => !connectedIds.has(id)
+  );
+
+  const debounceCutoff = new Date(Date.now() - 5 * 60_000).toISOString();
+
+  let recomputed = 0;
+  let skipped = 0;
+
+  for (const brand of candidateBrands) {
+    if (
+      brand.matches_recompute_queued_at &&
+      brand.matches_recompute_queued_at > debounceCutoff
+    ) {
+      skipped++;
+      continue;
+    }
+    await supabase
+      .from("brands")
+      .update({
+        matches_recompute_queued_at: new Date().toISOString(),
+      } as never)
+      .eq("id", brand.id);
+
+    try {
+      await computeMatchesForBrand(supabase, brand.id);
+      await supabase
+        .from("brands")
+        .update({
+          matches_last_computed_at: new Date().toISOString(),
+        } as never)
+        .eq("id", brand.id);
+      recomputed++;
+    } catch (err) {
+      console.error(
+        `recomputeMatchesForCreator(${creatorId}) failed for brand ${brand.id}:`,
+        err
+      );
+    }
+  }
+
+  for (const brandId of geoOnlyIds) {
+    try {
+      await computeMatchesForBrand(supabase, brandId);
+      recomputed++;
+    } catch (err) {
+      console.error(
+        `recomputeMatchesForCreator(${creatorId}) failed for geo brand ${brandId}:`,
+        err
+      );
+    }
+  }
+
+  // `creatorId` is used only for logging context; scoring happens per-brand.
+  void creatorId;
+
+  return { brands_recomputed: recomputed, brands_skipped: skipped };
 }

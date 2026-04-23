@@ -3,21 +3,12 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { ObConnectorCard } from "@/components/onboarding/ob-connector-card";
 import {
-  ShoppingBag,
-  Mail,
-  Camera,
-  Check,
-  Shield,
-  ArrowRight,
-  ExternalLink,
-  Loader2,
-  ChevronDown,
-  ChevronUp,
+  ArrowRightIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 export default function IntegrationsPage() {
   const router = useRouter();
@@ -29,7 +20,7 @@ export default function IntegrationsPage() {
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [connecting, setConnecting] = useState(false);
-  const [showStoreInput, setShowStoreInput] = useState(false);
+  const [showShopifyForm, setShowShopifyForm] = useState(false);
   const [showSetupGuide, setShowSetupGuide] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,8 +68,8 @@ export default function IntegrationsPage() {
   }, []);
 
   async function handleConnectShopify() {
-    if (!showStoreInput) {
-      setShowStoreInput(true);
+    if (!showShopifyForm) {
+      setShowShopifyForm(true);
       return;
     }
 
@@ -86,12 +77,10 @@ export default function IntegrationsPage() {
       setError("Please enter your Shopify store URL.");
       return;
     }
-
     if (!clientId.trim()) {
       setError("Please enter your Client ID.");
       return;
     }
-
     if (!clientSecret.trim()) {
       setError("Please enter your Client Secret.");
       return;
@@ -121,6 +110,7 @@ export default function IntegrationsPage() {
 
       setShopifyConnected(true);
       setConnecting(false);
+      setShowShopifyForm(false);
     } catch {
       setError("Network error. Please try again.");
       setConnecting(false);
@@ -146,13 +136,10 @@ export default function IntegrationsPage() {
       }
 
       if (data.redirect_url) {
-        // Open Google OAuth in a new tab
         const popup = window.open(data.redirect_url, "_blank", "noopener");
         if (!popup) {
-          // Popup blocked — fall back to same-tab redirect
           window.location.href = data.redirect_url;
         }
-        // connectingGmail stays true until postMessage arrives
         return;
       }
 
@@ -177,305 +164,233 @@ export default function IntegrationsPage() {
     router.push("/onboarding/preferences");
   }
 
-  const accessItems = [
-    { label: "Orders by region", note: "read-only" },
-    { label: "Product catalog", note: "read-only" },
-    { label: "Discount code creation", note: "write" },
-    { label: "Analytics sessions", note: "read-only" },
-  ];
-
   const setupSteps = [
-    "Go to your Shopify Partners Dashboard or Shopify Admin → Settings → Apps and sales channels → Develop apps",
-    'Click "Create an app" and give it a name (e.g. "Influencer Platform")',
-    "Under Configuration → Admin API scopes, select: read_orders, read_products, write_price_rules, write_discounts, write_draft_orders, read_analytics",
+    'Go to your Shopify Partners Dashboard or Admin \u2192 Settings \u2192 Apps \u2192 "Develop apps"',
+    'Click "Create an app" and name it (e.g. "Influencer Platform")',
+    "Under Configuration \u2192 Admin API scopes, select: read_orders, read_products, write_price_rules, write_discounts, write_draft_orders, read_analytics",
     "Install the app on your store",
-    "Go to the app's API credentials page — copy the Client ID and Client Secret",
-    "Paste them below along with your store URL (e.g. your-store.myshopify.com)",
+    "Copy the Client ID and Client Secret from the API credentials page",
+    "Paste them below along with your store URL",
   ];
 
   return (
-    <div className="space-y-8">
+    <div style={{ animation: "obRise 0.35s ease-out" }}>
       {/* Header */}
-      <div className="space-y-2">
-        <h1 className="text-2xl font-heading font-semibold tracking-tight">
-          Connect your tools
-        </h1>
-        <p className="text-muted-foreground">
-          Integrations supercharge your influencer campaigns with real data.
-          Connect what you use today — you can always add more later.
-        </p>
+      <div className="mb-2 font-mono text-[11px] uppercase tracking-[1.4px] text-[var(--ob-clay)]">
+        &#x25CF; step 2 of 3 &middot; connect
       </div>
+      <h1 className="font-serif text-3xl leading-tight tracking-tight md:text-4xl">
+        Last thing:{" "}
+        <span className="italic text-[var(--ob-clay)]">
+          plug in your tools.
+        </span>
+      </h1>
+      <p className="mt-2 max-w-xl text-sm text-[var(--ob-ink2)]">
+        Each connector unlocks something specific. You can always add these later
+        &mdash; but you&rsquo;ll get better matches from day one.
+      </p>
 
-      {/* Card grid */}
-      <div className="grid gap-5 md:grid-cols-3">
-        {/* Card A — Shopify (highlighted, recommended) */}
-        <div
-          className={cn(
-            "relative flex flex-col rounded-xl border-2 bg-card p-5 transition-all md:col-span-3",
-            shopifyConnected
-              ? "border-success/50 bg-success/5"
-              : "border-primary/30 bg-primary/[0.02]"
-          )}
-        >
-          {/* Badge */}
-          {shopifyConnected ? (
-            <span className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-full bg-success/10 px-2.5 py-0.5 text-xs font-medium text-success">
-              <Check className="size-3" />
-              CONNECTED
-            </span>
-          ) : (
-            <Badge className="absolute right-4 top-4 bg-success/10 text-success border-0 hover:bg-success/10">
-              RECOMMENDED
-            </Badge>
-          )}
+      {/* Connector cards */}
+      <div className="mt-7 flex flex-col gap-3">
+        {/* Shopify */}
+        <div>
+          <ObConnectorCard
+            color="#96bf48"
+            letter="S"
+            name="Shopify"
+            unlocks={[
+              "Real sales per region",
+              "Top-performing products",
+              "Auto-issue discount codes",
+            ]}
+            connected={shopifyConnected}
+            onConnect={handleConnectShopify}
+            connecting={connecting}
+            recommended
+          />
 
-          <div className="flex flex-col gap-5 md:flex-row md:items-start">
-            {/* Icon + Title */}
-            <div className="flex-1 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="flex size-11 items-center justify-center rounded-lg bg-[#96bf48]/10">
-                  <ShoppingBag className="size-5 text-[#96bf48]" />
-                </div>
-                <div>
-                  <h3 className="font-heading font-semibold text-base">
-                    Connect Shopify
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    E-commerce integration via OAuth
-                  </p>
-                </div>
-              </div>
+          {/* Shopify credential form — slides in below the card */}
+          {showShopifyForm && !shopifyConnected && (
+            <div
+              className="mx-4 rounded-b-xl border border-t-0 border-[var(--ob-line)] bg-[var(--ob-panel)] p-4"
+              style={{ animation: "obFadeUp 0.25s ease-out" }}
+            >
+              {/* Setup guide toggle */}
+              <button
+                type="button"
+                onClick={() => setShowSetupGuide(!showSetupGuide)}
+                className="mb-3 flex w-full items-center justify-between rounded-lg border border-dashed border-[var(--ob-clay)]/30 bg-[var(--ob-clay-soft)] px-3 py-2 text-xs font-medium text-[var(--ob-clay)] transition-colors hover:bg-[var(--ob-clay-soft)]/80"
+              >
+                <span>How to get your Shopify credentials</span>
+                {showSetupGuide ? (
+                  <ChevronUpIcon className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronDownIcon className="h-3.5 w-3.5" />
+                )}
+              </button>
 
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Unlock geographic intelligence, auto-create discount codes,
-                track influencer-driven sales in real-time.
-              </p>
-
-              {/* What we access */}
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  What we access
-                </p>
-                <ul className="grid gap-1.5 sm:grid-cols-2">
-                  {accessItems.map((item) => (
-                    <li
-                      key={item.label}
-                      className="flex items-center gap-2 text-sm"
-                    >
-                      <Check className="size-3.5 text-success shrink-0" />
-                      <span>{item.label}</span>
-                      <span className="text-xs text-muted-foreground">
-                        ({item.note})
+              {showSetupGuide && (
+                <ol className="mb-3 space-y-1.5 rounded-lg border border-[var(--ob-line)] bg-[var(--ob-card)] p-3 text-xs text-[var(--ob-ink2)]">
+                  {setupSteps.map((step, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="shrink-0 font-mono font-semibold text-[var(--ob-ink)]">
+                        {i + 1}.
                       </span>
+                      <span>{step}</span>
                     </li>
                   ))}
-                </ul>
-              </div>
-            </div>
-
-            {/* Connect action */}
-            <div className="flex flex-col gap-3 md:w-80 md:pt-1">
-              {!shopifyConnected && (
-                <>
-                  {showStoreInput && (
-                    <div className="space-y-3">
-                      {/* Setup guide toggle */}
-                      <button
-                        type="button"
-                        onClick={() => setShowSetupGuide(!showSetupGuide)}
-                        className="flex w-full items-center justify-between rounded-lg border border-dashed border-primary/30 bg-primary/5 px-3 py-2 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
-                      >
-                        <span>How to get your Shopify credentials</span>
-                        {showSetupGuide ? (
-                          <ChevronUp className="size-3.5" />
-                        ) : (
-                          <ChevronDown className="size-3.5" />
-                        )}
-                      </button>
-
-                      {showSetupGuide && (
-                        <ol className="space-y-1.5 rounded-lg border bg-muted/50 p-3 text-xs text-muted-foreground">
-                          {setupSteps.map((step, i) => (
-                            <li key={i} className="flex gap-2">
-                              <span className="shrink-0 font-semibold text-foreground">
-                                {i + 1}.
-                              </span>
-                              <span>{step}</span>
-                            </li>
-                          ))}
-                        </ol>
-                      )}
-
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-muted-foreground">
-                          Store URL
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="your-store.myshopify.com"
-                          value={storeUrl}
-                          onChange={(e) => setStoreUrl(e.target.value)}
-                          className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-3 focus:ring-ring/50"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-muted-foreground">
-                          Client ID
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Your app's Client ID (API key)"
-                          value={clientId}
-                          onChange={(e) => setClientId(e.target.value)}
-                          className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-3 focus:ring-ring/50"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-muted-foreground">
-                          Client Secret
-                        </label>
-                        <input
-                          type="password"
-                          placeholder="Your app's Client Secret (API secret key)"
-                          value={clientSecret}
-                          onChange={(e) => setClientSecret(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") handleConnectShopify();
-                          }}
-                          className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-3 focus:ring-ring/50"
-                        />
-                      </div>
-                    </div>
-                  )}
-                  {error && <p className="text-xs text-destructive">{error}</p>}
-                  <Button
-                    onClick={handleConnectShopify}
-                    disabled={connecting}
-                    className="w-full gap-2"
-                    size="lg"
-                  >
-                    {connecting ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <ExternalLink className="size-4" />
-                    )}
-                    {connecting ? "Connecting..." : "Connect Shopify"}
-                  </Button>
-                </>
+                </ol>
               )}
 
-              {shopifyConnected && (
-                <div className="flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2 text-sm text-success">
-                  <Check className="size-4" />
-                  <span className="font-medium">Shopify connected</span>
+              <div className="flex flex-col gap-2.5">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ob-ink2)]">
+                    Store URL
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="your-store.myshopify.com"
+                    value={storeUrl}
+                    onChange={(e) => setStoreUrl(e.target.value)}
+                    className="w-full rounded-lg border border-[var(--ob-line)] bg-[var(--ob-card)] px-3 py-2 text-sm text-[var(--ob-ink)] outline-none placeholder:text-[var(--ob-ink4)] focus:border-[var(--ob-clay)]"
+                  />
                 </div>
-              )}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ob-ink2)]">
+                    Client ID
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Your app's Client ID"
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                    className="w-full rounded-lg border border-[var(--ob-line)] bg-[var(--ob-card)] px-3 py-2 text-sm text-[var(--ob-ink)] outline-none placeholder:text-[var(--ob-ink4)] focus:border-[var(--ob-clay)]"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ob-ink2)]">
+                    Client Secret
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Your app's Client Secret"
+                    value={clientSecret}
+                    onChange={(e) => setClientSecret(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleConnectShopify();
+                    }}
+                    className="w-full rounded-lg border border-[var(--ob-line)] bg-[var(--ob-card)] px-3 py-2 text-sm text-[var(--ob-ink)] outline-none placeholder:text-[var(--ob-ink4)] focus:border-[var(--ob-clay)]"
+                  />
+                </div>
 
-              {/* Trust note */}
-              <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                <Shield className="size-3.5 mt-0.5 shrink-0" />
-                <span>
-                  Your data is encrypted. We never modify your products or
-                  orders.
-                </span>
+                {error && (
+                  <p className="text-xs text-red-600">{error}</p>
+                )}
+
+                <button
+                  onClick={handleConnectShopify}
+                  disabled={connecting}
+                  className="mt-1 inline-flex items-center justify-center gap-2 rounded-lg bg-[#96bf48] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {connecting ? (
+                    <>
+                      <svg
+                        className="h-4 w-4 animate-spin"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                      >
+                        <circle
+                          cx="8"
+                          cy="8"
+                          r="6"
+                          stroke="currentColor"
+                          strokeOpacity="0.3"
+                          strokeWidth="1.6"
+                        />
+                        <path
+                          d="M8 2a6 6 0 016 6"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      Connecting...
+                    </>
+                  ) : (
+                    "Connect Shopify"
+                  )}
+                </button>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
-        {/* Card B — Email */}
-        <div
-          className={cn(
-            "flex flex-col rounded-xl border bg-card p-5",
-            gmailConnected ? "border-success/50 bg-success/5" : ""
-          )}
-        >
-          {gmailConnected && (
-            <span className="mb-3 inline-flex w-fit items-center gap-1 rounded-full bg-success/10 px-2.5 py-0.5 text-xs font-medium text-success">
-              <Check className="size-3" />
-              CONNECTED
-            </span>
-          )}
-          <div className="flex items-center gap-3 mb-3">
-            <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/5">
-              <Mail className="size-5 text-destructive" />
-            </div>
-            <div>
-              <h3 className="font-heading font-semibold text-sm">
-                Connect Gmail
-              </h3>
-            </div>
-          </div>
-          <p className="mb-4 text-sm text-muted-foreground leading-relaxed flex-1">
-            Send outreach from your own domain. We never read your inbox —
-            only send on your behalf.
-          </p>
+        {/* Gmail */}
+        <div>
+          <ObConnectorCard
+            color="#ea4335"
+            letter="G"
+            name="Gmail"
+            unlocks={[
+              "Send outreach from your domain",
+              "Track opens + replies",
+              "Unified inbox per creator",
+            ]}
+            connected={gmailConnected}
+            onConnect={handleConnectGmail}
+            connecting={connectingGmail}
+            recommended
+          />
           {gmailError && (
-            <p className="mb-2 text-xs text-destructive">{gmailError}</p>
-          )}
-          {gmailConnected ? (
-            <div className="flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2 text-sm text-success">
-              <Check className="size-4" />
-              <span className="font-medium">Gmail connected</span>
-            </div>
-          ) : (
-            <Button
-              onClick={handleConnectGmail}
-              disabled={connectingGmail}
-              variant="secondary"
-              className="w-full gap-2"
-              size="lg"
-            >
-              {connectingGmail ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <ExternalLink className="size-4" />
-              )}
-              {connectingGmail ? "Connecting..." : "Connect Gmail"}
-            </Button>
+            <p className="mx-4 mt-1 text-xs text-red-600">{gmailError}</p>
           )}
         </div>
 
-        {/* Card C — Instagram (disabled) */}
-        <div className="flex flex-col rounded-xl border bg-card p-5 opacity-70">
-          <span className="mb-3 inline-flex w-fit items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-            COMING SOON
-          </span>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="flex size-10 items-center justify-center rounded-lg bg-pink-500/5">
-              <Camera className="size-5 text-muted-foreground" />
-            </div>
-            <div>
-              <h3 className="font-heading font-semibold text-sm">
-                Connect Instagram
-              </h3>
-            </div>
-          </div>
-          <p className="mb-4 text-sm text-muted-foreground leading-relaxed flex-1">
-            Track brand mentions automatically.
-          </p>
-          <Button disabled variant="secondary" className="w-full" size="lg">
-            Coming in Phase 6
-          </Button>
-        </div>
+        {/* Instagram — coming soon */}
+        <ObConnectorCard
+          color="#c74ca0"
+          letter="I"
+          name="Instagram"
+          unlocks={[
+            "Auto-DM approved creators",
+            "Track story mentions",
+            "Reel performance attribution",
+          ]}
+          connected={false}
+          onConnect={() => {}}
+          comingSoon
+        />
+
+        {/* Google Analytics — coming soon */}
+        <ObConnectorCard
+          color="#4285f4"
+          letter="A"
+          name="Google Analytics"
+          unlocks={[
+            "UTM attribution per creator",
+            "On-site conversion events",
+          ]}
+          connected={false}
+          onConnect={() => {}}
+          comingSoon
+        />
       </div>
 
-      {/* Bottom actions */}
-      <div className="flex items-center justify-between border-t pt-6">
+      {/* Footer */}
+      <div className="mt-8 flex items-center justify-between border-t border-[var(--ob-line)] pt-5 pb-8">
         <button
           onClick={advanceToPreferences}
-          className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
+          className="text-[13px] text-[var(--ob-ink3)] underline underline-offset-[3px] transition-colors hover:text-[var(--ob-ink)]"
         >
           Skip for now
         </button>
-        <Button
+        <button
           onClick={advanceToPreferences}
-          size="lg"
-          className="gap-2"
+          className="inline-flex items-center gap-2 rounded-lg bg-[var(--ob-ink)] px-6 py-3 text-sm font-semibold text-white transition-all hover:opacity-90"
         >
           Continue
-          <ArrowRight className="size-4" />
-        </Button>
+          <ArrowRightIcon className="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
   );

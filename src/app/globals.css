@@ -9,6 +9,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-inter), "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace;
+  --font-serif: var(--font-instrument-serif), "Instrument Serif", Georgia, serif;
   --font-heading: var(--font-inter), "Inter", ui-sans-serif, system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -65,6 +66,21 @@
   --color-success-soft: var(--success-soft);
   --color-danger-soft: var(--danger-soft);
   --color-accent-fg: var(--accent-fg);
+
+  /* Dashboard Dark Ops tokens */
+  --color-db-bg: var(--db-bg);
+  --color-db-bg2: var(--db-bg2);
+  --color-db-bg3: var(--db-bg3);
+  --color-db-border: var(--db-border);
+  --color-db-border2: var(--db-border2);
+  --color-db-txt: var(--db-txt);
+  --color-db-txt2: var(--db-txt2);
+  --color-db-txt3: var(--db-txt3);
+  --color-db-clay: var(--db-clay);
+  --color-db-clay-soft: var(--db-clay-soft);
+  --color-db-ok: var(--db-ok);
+  --color-db-warn: var(--db-warn);
+  --color-db-danger: var(--db-danger);
 }
 
 :root {

@@ -1,0 +1,329 @@
+{
+  "$defs": {
+    "AudioProduction": {
+      "properties": {
+        "overall_quality_assessment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "casual",
+          "title": "Overall Quality Assessment"
+        },
+        "pacing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pacing"
+        },
+        "uses_background_music": {
+          "default": false,
+          "title": "Uses Background Music",
+          "type": "boolean"
+        },
+        "voiceover_vs_oncamera": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Voiceover Vs Oncamera"
+        }
+      },
+      "title": "AudioProduction",
+      "type": "object"
+    },
+    "ContentDepth": {
+      "properties": {
+        "avg_word_count_per_reel": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avg Word Count Per Reel"
+        },
+        "educational_density": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Educational Density"
+        },
+        "filler_word_frequency": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Filler Word Frequency"
+        },
+        "storytelling_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Storytelling Score"
+        },
+        "vocabulary_complexity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vocabulary Complexity"
+        }
+      },
+      "title": "ContentDepth",
+      "type": "object"
+    },
+    "HookAnalysis": {
+      "properties": {
+        "avg_hook_quality": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avg Hook Quality"
+        },
+        "dominant_hook_style": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dominant Hook Style"
+        },
+        "hooks": {
+          "items": {
+            "$ref": "#/$defs/HookItem"
+          },
+          "title": "Hooks",
+          "type": "array"
+        }
+      },
+      "title": "HookAnalysis",
+      "type": "object"
+    },
+    "HookItem": {
+      "properties": {
+        "hook_quality": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hook Quality"
+        },
+        "hook_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hook Text"
+        },
+        "hook_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hook Type"
+        },
+        "post_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Post Id"
+        }
+      },
+      "title": "HookItem",
+      "type": "object"
+    },
+    "RegionalSignals": {
+      "properties": {
+        "cultural_references": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Cultural References",
+          "type": "array"
+        },
+        "estimated_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Region"
+        },
+        "local_places_mentioned": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Local Places Mentioned",
+          "type": "array"
+        },
+        "regional_language_phrases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Regional Language Phrases",
+          "type": "array"
+        }
+      },
+      "title": "RegionalSignals",
+      "type": "object"
+    },
+    "SpeakingLanguage": {
+      "properties": {
+        "accent_notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accent Notes"
+        },
+        "caption_vs_spoken_mismatch": {
+          "default": false,
+          "title": "Caption Vs Spoken Mismatch",
+          "type": "boolean"
+        },
+        "languages_spoken": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Languages Spoken",
+          "type": "array"
+        },
+        "primary_spoken_language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Primary Spoken Language"
+        }
+      },
+      "title": "SpeakingLanguage",
+      "type": "object"
+    }
+  },
+  "$id": "https://influencer.local/schemas/transcript_intelligence.schema.json",
+  "properties": {
+    "audio_production": {
+      "$ref": "#/$defs/AudioProduction"
+    },
+    "brand_mention_analysis": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Brand Mention Analysis",
+      "type": "array"
+    },
+    "content_depth": {
+      "$ref": "#/$defs/ContentDepth"
+    },
+    "data_quality": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Data Quality"
+    },
+    "hook_analysis": {
+      "$ref": "#/$defs/HookAnalysis"
+    },
+    "regional_signals": {
+      "$ref": "#/$defs/RegionalSignals"
+    },
+    "speaking_language": {
+      "$ref": "#/$defs/SpeakingLanguage"
+    }
+  },
+  "title": "TranscriptIntelligencePayload",
+  "type": "object"
+}

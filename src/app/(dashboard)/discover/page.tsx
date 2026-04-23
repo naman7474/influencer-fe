@@ -163,7 +163,7 @@ export default function DiscoverPage() {
     <div className="flex h-full flex-col">
       {/* ── Page header ── */}
       <div className="shrink-0 space-y-1 pb-4">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+        <h1 className="font-serif text-2xl tracking-tight text-foreground">
           Discover Creators
         </h1>
         <p className="text-sm text-muted-foreground">

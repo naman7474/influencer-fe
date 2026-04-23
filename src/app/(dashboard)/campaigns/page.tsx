@@ -22,18 +22,45 @@ export default async function CampaignsPage() {
 
   const campaigns = await getCampaigns(supabase, brand.id);
 
-  // Fetch creator counts + status breakdowns for each campaign
+  // Fetch creator counts + status breakdowns + avatar stack preview for each campaign
   const campaignMeta: Record<
     string,
-    { count: number; statusCounts: Record<string, number> }
+    {
+      count: number;
+      statusCounts: Record<string, number>;
+      avatars: { handle: string; avatar_url: string | null }[];
+    }
   > = {};
+
+  // Priority for the avatar stack: confirmed → content_live → completed → the rest
+  const AVATAR_PRIORITY: Record<string, number> = {
+    confirmed: 0,
+    content_live: 1,
+    completed: 2,
+    negotiating: 3,
+    outreach_sent: 4,
+    shortlisted: 5,
+    declined: 6,
+  };
 
   await Promise.all(
     campaigns.map(async (c) => {
       const creators = await getCampaignCreators(supabase, c.id);
+      const avatars = [...creators]
+        .sort(
+          (a, b) =>
+            (AVATAR_PRIORITY[a.status] ?? 99) -
+            (AVATAR_PRIORITY[b.status] ?? 99),
+        )
+        .slice(0, 5)
+        .map((cc) => ({
+          handle: cc.creator.handle,
+          avatar_url: cc.creator.avatar_url,
+        }));
       campaignMeta[c.id] = {
         count: creators.length,
         statusCounts: getStatusCounts(creators),
+        avatars,
       };
     }),
   );

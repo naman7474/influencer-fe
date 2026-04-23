@@ -11,13 +11,13 @@ import type {
   CreatorBrandMatch,
 } from "@/lib/types/database";
 
-import { ProfileHeader } from "@/components/creator-profile/profile-header";
+import { ProfileHero } from "@/components/creator-profile/profile-hero";
+import { StickyActionBar } from "@/components/creator-profile/sticky-action-bar";
 import { TabContainer } from "@/components/creator-profile/tab-container";
-import { OverviewTab } from "@/components/creator-profile/overview-tab";
-import { ContentTab } from "@/components/creator-profile/content-tab";
-import { AudienceTab } from "@/components/creator-profile/audience-tab";
-import { PerformanceTab } from "@/components/creator-profile/performance-tab";
-import { HistoryTab } from "@/components/creator-profile/history-tab";
+import { FitTab } from "@/components/creator-profile/fit-tab";
+import { CredibilityTab } from "@/components/creator-profile/credibility-tab";
+import { ImpactTab } from "@/components/creator-profile/impact-tab";
+import { CommerceTab } from "@/components/creator-profile/commerce-tab";
 
 /* ------------------------------------------------------------------ */
 /*  Page                                                               */
@@ -90,44 +90,55 @@ export default async function CreatorProfilePage(props: {
   /* ── Render ── */
   return (
     <div className="flex h-full flex-col gap-8 overflow-y-auto">
-      {/* Header */}
-      <ProfileHeader
+      {/* Hero (conviction zone) */}
+      <ProfileHero
         creator={creatorTyped}
         scores={scoresTyped}
         match={brandMatch}
+        caption={captionTyped}
+        transcript={transcriptTyped}
+        audience={audienceTyped}
       />
 
-      {/* Tabs */}
+      {/* Tabs (diligence zone) */}
       <TabContainer
-        overviewTab={
-          <OverviewTab
+        fitTab={
+          <FitTab
+            creator={creatorTyped}
+            scores={scoresTyped}
+            caption={captionTyped}
+            transcript={transcriptTyped}
+            audience={audienceTyped}
+            match={brandMatch}
+          />
+        }
+        credibilityTab={
+          <CredibilityTab
+            creator={creatorTyped}
             scores={scoresTyped}
             caption={captionTyped}
             transcript={transcriptTyped}
             audience={audienceTyped}
           />
         }
-        contentTab={
-          <ContentTab
-            caption={captionTyped}
+        impactTab={
+          <ImpactTab
+            scores={scoresTyped}
             transcript={transcriptTyped}
+            posts={postsTyped}
           />
         }
-        audienceTab={
-          <AudienceTab
-            audience={audienceTyped}
-            spokenLanguage={transcriptTyped?.primary_spoken_language}
-            creatorCity={creatorTyped.city}
-            creatorCountry={creatorTyped.country}
+        commerceTab={
+          <CommerceTab
+            creator={creatorTyped}
+            scores={scoresTyped}
+            caption={captionTyped}
           />
-        }
-        performanceTab={
-          <PerformanceTab scores={scoresTyped} posts={postsTyped} />
-        }
-        historyTab={
-          <HistoryTab collaborations={[]} />
         }
       />
+
+      {/* Sticky action bar */}
+      <StickyActionBar creator={creatorTyped} />
     </div>
   );
 }

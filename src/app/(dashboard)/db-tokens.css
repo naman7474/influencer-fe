@@ -1,0 +1,124 @@
+/* ══════════════════════════════════════════════════════════════════════
+   Dark Ops — Dashboard design tokens
+   Scoped via `.db-shell` on <html> so ALL elements (including portals)
+   inherit the warm dark palette.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.db-shell {
+  /* Core palette — overrides shadcn CSS custom properties */
+  --background: #14110e;
+  --foreground: #efe8dc;
+  --card: #1b1814;
+  --card-foreground: #efe8dc;
+  --popover: #1b1814;
+  --popover-foreground: #efe8dc;
+  --primary: #c96a3c;
+  --primary-foreground: #efe8dc;
+  --secondary: #241f19;
+  --secondary-foreground: #efe8dc;
+  --muted: #241f19;
+  --muted-foreground: #7a6e63;
+  --accent: #2e1f15;
+  --accent-foreground: #efe8dc;
+  --destructive: #d94f4f;
+  --border: #2a2520;
+  --input: #241f19;
+  --ring: #c96a3c;
+
+  /* Semantic */
+  --success: #5bb97b;
+  --warning: #e2a63d;
+  --info: #5b9bd5;
+  --indigo: #c96a3c;
+  --indigo-soft: rgba(201, 106, 60, 0.15);
+
+  /* Agent design system (dark-ops) */
+  --surface-2: #1b1814;
+  --surface-3: #241f19;
+  --fg-dim: #b8a99a;
+  --fg-faint: #7a6e63;
+  --border-strong: #3a342d;
+  --amber: #e2a63d;
+  --amber-soft: rgba(226, 166, 61, 0.12);
+  --success-soft: rgba(91, 185, 123, 0.12);
+  --danger: #d94f4f;
+  --danger-soft: rgba(217, 79, 79, 0.12);
+  --accent-fg: #c96a3c;
+
+  /* Chart palette (warm) */
+  --chart-1: #c96a3c;
+  --chart-2: #5bb97b;
+  --chart-3: #e2a63d;
+  --chart-4: #5b9bd5;
+  --chart-5: #d94f4f;
+
+  /* Sidebar */
+  --sidebar: #1b1814;
+  --sidebar-foreground: #b8a99a;
+  --sidebar-primary: #c96a3c;
+  --sidebar-primary-foreground: #efe8dc;
+  --sidebar-accent: #2e1f15;
+  --sidebar-accent-foreground: #efe8dc;
+  --sidebar-border: #2a2520;
+  --sidebar-ring: #c96a3c;
+
+  /* Shadows (warm-tinted) */
+  --shadow-sm: 0 1px 3px rgba(20, 17, 14, 0.24);
+  --shadow-md: 0 4px 12px rgba(20, 17, 14, 0.32);
+  --shadow-lg: 0 8px 24px rgba(20, 17, 14, 0.40);
+  --shadow-xl: 0 16px 48px rgba(20, 17, 14, 0.48);
+
+  /* Dashboard-specific tokens (for new/custom components) */
+  --db-bg: #14110e;
+  --db-bg2: #1b1814;
+  --db-bg3: #241f19;
+  --db-border: #2a2520;
+  --db-border2: #3a342d;
+  --db-txt: #efe8dc;
+  --db-txt2: #b8a99a;
+  --db-txt3: #7a6e63;
+  --db-clay: #c96a3c;
+  --db-clay-soft: #2e1f15;
+  --db-ok: #5bb97b;
+  --db-warn: #e2a63d;
+  --db-danger: #d94f4f;
+
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Badge overrides (warm dark) ───────────────────────────────────── */
+
+.db-shell .badge-nano  { background: rgba(201, 106, 60, 0.15); color: #e8915a; }
+.db-shell .badge-micro { background: rgba(91, 155, 213, 0.15); color: #7db8e8; }
+.db-shell .badge-mid   { background: rgba(91, 185, 123, 0.15); color: #7dd9a0; }
+.db-shell .badge-macro { background: rgba(180, 120, 220, 0.15); color: #c9a0e8; }
+.db-shell .badge-mega  { background: rgba(217, 79, 79, 0.15); color: #e89a9a; }
+
+.db-shell .badge-active  { background: rgba(91, 185, 123, 0.15); color: #5bb97b; }
+.db-shell .badge-draft   { background: #241f19; color: #7a6e63; border-color: #2a2520; }
+.db-shell .badge-pending { background: rgba(226, 166, 61, 0.12); color: #e2a63d; }
+
+/* Score gradient (warm) */
+.db-shell .cpi-gradient {
+  background: linear-gradient(90deg, #c96a3c, #5bb97b);
+}
+
+/* ── Scrollbar (dark) ──────────────────────────────────────────────── */
+
+.db-shell *::-webkit-scrollbar { width: 8px; height: 8px; }
+.db-shell *::-webkit-scrollbar-track { background: transparent; }
+.db-shell *::-webkit-scrollbar-thumb { background: rgba(239, 232, 220, 0.08); border-radius: 4px; }
+.db-shell *::-webkit-scrollbar-thumb:hover { background: rgba(239, 232, 220, 0.15); }
+
+/* ── Keyframes ─────────────────────────────────────────────────────── */
+
+@keyframes dbPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes dbFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

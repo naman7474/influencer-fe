@@ -5,12 +5,6 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Brand } from "@/lib/types/database";
 import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@/components/ui/tabs";
-import {
   Card,
   CardContent,
   CardDescription,
@@ -39,7 +33,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  Brain,
   Building2,
+  Cpu,
+  FileText,
   Globe,
   Image as ImageIcon,
   KeyRound,
@@ -57,9 +54,14 @@ import {
   Trash2,
   Upload,
   User,
+  Wrench,
   X,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
+import { AutonomySettings } from "@/components/agent/autonomy-settings";
+import SkillsPage from "@/app/(dashboard)/agent/skills/page";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -496,39 +498,66 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
   /*  Render                                                           */
   /* ---------------------------------------------------------------- */
 
+  const [activeSection, setActiveSection] = useState("profile");
+
+  const NAV_ITEMS = [
+    { value: "profile", label: "Profile", icon: User },
+    { value: "preferences", label: "Preferences", icon: Settings2 },
+    { value: "integrations", label: "Integrations", icon: Plug },
+    { value: "illaya", label: "Illaya", icon: Sparkles },
+    { value: "brand-safety", label: "Brand Safety", icon: ShieldCheck },
+    { value: "account", label: "Account", icon: KeyRound },
+  ] as const;
+
   return (
-    <Tabs defaultValue="profile">
-      <TabsList variant="line" className="mb-6 w-full justify-start">
-        <TabsTrigger value="profile" className="gap-1.5">
-          <User className="size-3.5" />
-          Profile
-        </TabsTrigger>
-        <TabsTrigger value="preferences" className="gap-1.5">
-          <Settings2 className="size-3.5" />
-          Preferences
-        </TabsTrigger>
-        <TabsTrigger value="integrations" className="gap-1.5">
-          <Plug className="size-3.5" />
-          Integrations
-        </TabsTrigger>
-        <TabsTrigger value="agent" className="gap-1.5">
-          <Sparkles className="size-3.5" />
-          AI Agent
-        </TabsTrigger>
-        <TabsTrigger value="brand-safety" className="gap-1.5">
-          <ShieldCheck className="size-3.5" />
-          Brand Safety
-        </TabsTrigger>
-        <TabsTrigger value="account" className="gap-1.5">
-          <KeyRound className="size-3.5" />
-          Account
-        </TabsTrigger>
-      </TabsList>
+    <div className="flex gap-6 min-h-0">
+      {/* ── Vertical sidebar nav ───────────────────────────────── */}
+      <nav className="hidden md:flex w-[200px] shrink-0 flex-col gap-1">
+        {NAV_ITEMS.map((item) => {
+          const Icon = item.icon;
+          const active = activeSection === item.value;
+          return (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => setActiveSection(item.value)}
+              className={cn(
+                "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors text-left",
+                active
+                  ? "bg-[var(--db-clay-soft)] text-[var(--db-clay)]"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              )}
+            >
+              <Icon className="size-4 shrink-0" />
+              {item.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* ── Mobile dropdown (visible below md) ─────────────────── */}
+      <div className="md:hidden w-full mb-4">
+        <Select value={activeSection} onValueChange={(val) => { if (val) setActiveSection(val); }}>
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {NAV_ITEMS.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* ── Content area ───────────────────────────────────────── */}
+      <div className="flex-1 min-w-0">
 
       {/* ============================================================= */}
-      {/*  Profile Tab                                                    */}
+      {/*  Profile                                                        */}
       {/* ============================================================= */}
-      <TabsContent value="profile">
+      {activeSection === "profile" && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -651,12 +680,12 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
             </div>
           </CardContent>
         </Card>
-      </TabsContent>
+      )}
 
       {/* ============================================================= */}
-      {/*  Preferences Tab                                                */}
+      {/*  Preferences                                                    */}
       {/* ============================================================= */}
-      <TabsContent value="preferences">
+      {activeSection === "preferences" && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -815,12 +844,13 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
             </div>
           </CardContent>
         </Card>
-      </TabsContent>
+      )}
 
       {/* ============================================================= */}
-      {/*  Integrations Tab                                               */}
+      {/*  Integrations                                                   */}
       {/* ============================================================= */}
-      <TabsContent value="integrations">
+      {activeSection === "integrations" && (
+        <div className="flex flex-col gap-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -917,19 +947,20 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
             <GmailIntegrationCard brand={brand} />
           </CardContent>
         </Card>
-      </TabsContent>
+        </div>
+      )}
 
       {/* ============================================================= */}
-      {/*  AI Agent Tab — Redirect to dedicated config page               */}
+      {/*  Illaya — AI Agent                                              */}
       {/* ============================================================= */}
-      <TabsContent value="agent">
-        <AgentSettingsRedirect brand={brand} />
-      </TabsContent>
+      {activeSection === "illaya" && (
+        <AgentSettingsInline brand={brand} />
+      )}
 
       {/* ============================================================= */}
-      {/*  Brand Safety Tab                                               */}
+      {/*  Brand Safety                                                   */}
       {/* ============================================================= */}
-      <TabsContent value="brand-safety">
+      {activeSection === "brand-safety" && (
         <div className="flex flex-col gap-6">
           {/* Website Analysis */}
           {brand?.website && (
@@ -1163,12 +1194,12 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
             )}
           </Button>
         </div>
-      </TabsContent>
+      )}
 
       {/* ============================================================= */}
-      {/*  Account Tab                                                    */}
+      {/*  Account                                                        */}
       {/* ============================================================= */}
-      <TabsContent value="account">
+      {activeSection === "account" && (
         <div className="flex flex-col gap-6">
           {/* Email */}
           <Card>
@@ -1326,47 +1357,114 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
             </CardContent>
           </Card>
         </div>
-      </TabsContent>
-    </Tabs>
+      )}
+      </div>
+    </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/*  AI Agent Settings — Redirect to dedicated config page              */
+/*  Illaya — AI Agent Settings (inline)                                */
 /* ------------------------------------------------------------------ */
 
-function AgentSettingsRedirect({ brand }: { brand: Brand | null }) {
+function AgentSettingsInline({ brand }: { brand: Brand | null }) {
   const router = useRouter();
   const [agentEnabled, setAgentEnabled] = useState(brand?.agent_enabled ?? false);
+  const [activeSubTab, setActiveSubTab] = useState<"config" | "skills">("config");
+
+  // Config state
+  const [configLoading, setConfigLoading] = useState(true);
+  const [configSaving, setConfigSaving] = useState(false);
+  const [configMessage, setConfigMessage] = useState<string | null>(null);
+  const [regenerating, setRegenerating] = useState<string | null>(null);
+  const [soulMd, setSoulMd] = useState("");
+  const [brandMd, setBrandMd] = useState("");
+  const [autonomyLevel, setAutonomyLevel] = useState("suggest_only");
+  const [actionAutonomy, setActionAutonomy] = useState<Record<string, string>>({});
+  const [budgetThreshold, setBudgetThreshold] = useState(25000);
+
+  useEffect(() => {
+    if (!agentEnabled) { setConfigLoading(false); return; }
+    async function loadConfig() {
+      try {
+        const res = await fetch("/api/agent/config");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.config) {
+            setSoulMd(data.config.soul_md || "");
+            setBrandMd(data.config.brand_md || "");
+            setAutonomyLevel(data.config.autonomy_level || "suggest_only");
+            if (data.config.action_autonomy) setActionAutonomy(data.config.action_autonomy);
+            if (data.config.budget_auto_threshold != null) setBudgetThreshold(data.config.budget_auto_threshold);
+          }
+        }
+      } catch {}
+      setConfigLoading(false);
+    }
+    loadConfig();
+  }, [agentEnabled]);
 
   async function handleToggleAgent() {
     const next = !agentEnabled;
     setAgentEnabled(next);
-
     if (next) {
       const res = await fetch("/api/agent/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ autonomy_level: "suggest_only" }),
       });
-      if (res.ok) {
-        router.refresh();
-      }
+      if (res.ok) router.refresh();
     } else {
-      const supabase = createClient();
-      await supabase
-        .from("brands")
-        .update({ agent_enabled: false } as never)
-        .eq("id", brand!.id);
+      const sb = createClient();
+      await sb.from("brands").update({ agent_enabled: false } as never).eq("id", brand!.id);
       router.refresh();
     }
+  }
+
+  async function handleSaveConfig() {
+    setConfigSaving(true);
+    setConfigMessage(null);
+    try {
+      const res = await fetch("/api/agent/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          soul_md: soulMd,
+          autonomy_level: autonomyLevel,
+          action_autonomy: Object.keys(actionAutonomy).length > 0 ? actionAutonomy : undefined,
+          budget_auto_threshold: budgetThreshold,
+        }),
+      });
+      setConfigMessage(res.ok ? "Configuration saved successfully." : "Failed to save. Please try again.");
+      if (res.ok) router.refresh();
+    } catch {
+      setConfigMessage("Failed to save. Please try again.");
+    }
+    setConfigSaving(false);
+  }
+
+  async function handleRegenerate(type: "brand" | "soul") {
+    setRegenerating(type);
+    try {
+      const res = await fetch("/api/agent/generate-context", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (type === "brand") setBrandMd(data.brand_md || "");
+        if (type === "soul") setSoulMd(data.soul_md || "");
+      }
+    } catch {}
+    setRegenerating(null);
   }
 
   if (!brand) {
     return (
       <Card>
         <CardContent className="py-8 text-center text-muted-foreground">
-          Complete your brand profile first to enable the AI Agent.
+          Complete your brand profile first to enable Illaya.
         </CardContent>
       </Card>
     );
@@ -1379,50 +1477,206 @@ function AgentSettingsRedirect({ brand }: { brand: Brand | null }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="size-4 text-primary" />
-            AI Marketing Agent
+            Illaya — AI Marketing Agent
           </CardTitle>
           <CardDescription>
-            Enable a conversational AI agent that can search creators, draft
-            outreach, benchmark rates, and give campaign recommendations.
+            Enable Illaya, your conversational AI agent that can search creators,
+            draft outreach, benchmark rates, and give campaign recommendations.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between max-w-lg">
             <div>
               <p className="text-sm font-medium">
-                {agentEnabled ? "Agent is active" : "Agent is disabled"}
+                {agentEnabled ? "Illaya is active" : "Illaya is disabled"}
               </p>
               <p className="text-xs text-muted-foreground">
                 {agentEnabled
-                  ? "The agent workspace is available in your sidebar."
-                  : "Enable to start chatting with your AI agent."}
+                  ? "Illaya is available in your sidebar and as an inline panel."
+                  : "Enable to start chatting with Illaya."}
               </p>
             </div>
-            <Switch
-              checked={agentEnabled}
-              onCheckedChange={handleToggleAgent}
-            />
+            <Switch checked={agentEnabled} onCheckedChange={handleToggleAgent} />
           </div>
         </CardContent>
       </Card>
 
       {agentEnabled && (
-        <Card>
-          <CardContent className="py-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">Agent Configuration</p>
-                <p className="text-xs text-muted-foreground">
-                  Manage personality, skills, automations, and autonomy settings in the dedicated agent workspace.
-                </p>
-              </div>
-              <Button onClick={() => router.push("/agent/config")}>
-                <SlidersHorizontal className="size-3.5" />
-                Open Agent Config
-              </Button>
+        <>
+          {/* Sub-tab selector */}
+          <div className="flex gap-1 rounded-lg bg-muted p-1">
+            {([
+              { value: "config" as const, label: "Configuration", icon: SlidersHorizontal },
+              { value: "skills" as const, label: "Skills", icon: Wrench },
+            ]).map((tab) => {
+              const TabIcon = tab.icon;
+              return (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => setActiveSubTab(tab.value)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                    activeSubTab === tab.value
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <TabIcon className="size-3.5" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Configuration sub-tab */}
+          {activeSubTab === "config" && (
+            <div className="flex flex-col gap-6">
+              {configLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <>
+                  {configMessage && (
+                    <p className={`text-sm ${configMessage.includes("success") ? "text-success" : "text-destructive"}`}>
+                      {configMessage}
+                    </p>
+                  )}
+
+                  {/* SOUL.md */}
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <FileText className="size-4 text-primary" />
+                            SOUL.md — Agent Personality
+                          </CardTitle>
+                          <CardDescription>
+                            Controls Illaya&apos;s voice, tone, behavior rules, and communication style.
+                          </CardDescription>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => handleRegenerate("soul")} disabled={regenerating === "soul"}>
+                          <RefreshCw className={`size-3.5 ${regenerating === "soul" ? "animate-spin" : ""}`} />
+                          Reset to Default
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea value={soulMd} onChange={(e) => setSoulMd(e.target.value)} rows={14} className="font-mono text-xs leading-relaxed" placeholder="Loading..." />
+                    </CardContent>
+                  </Card>
+
+                  {/* Soul Evolution */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Brain className="size-4 text-violet-500" />
+                        Soul Evolution
+                      </CardTitle>
+                      <CardDescription>Illaya learns from interactions and evolves its personality rules over time.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                        <div className="flex flex-col gap-1.5 rounded-lg border p-3">
+                          <p className="font-medium text-xs">Base Rules</p>
+                          <p className="text-[11px] text-muted-foreground">Your hand-written personality rules. Always preserved.</p>
+                        </div>
+                        <div className="flex flex-col gap-1.5 rounded-lg border p-3">
+                          <p className="font-medium text-xs">Learned Rules</p>
+                          <p className="text-[11px] text-muted-foreground">High-confidence knowledge becomes behavior rules.</p>
+                        </div>
+                        <div className="flex flex-col gap-1.5 rounded-lg border p-3">
+                          <p className="font-medium text-xs">Evolution Cycle</p>
+                          <p className="text-[11px] text-muted-foreground">Appends learned rules without changing your base.</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Autonomy */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Global Autonomy Level</CardTitle>
+                      <CardDescription>Set the overall autonomy mode. Per-action overrides below take precedence.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-col gap-3 max-w-lg">
+                        <Select value={autonomyLevel} onValueChange={(val) => { if (val) setAutonomyLevel(val); }}>
+                          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="suggest_only">Suggest Only — Agent can only suggest, never act</SelectItem>
+                            <SelectItem value="draft_and_propose">Draft &amp; Propose — Agent drafts, you approve</SelectItem>
+                            <SelectItem value="auto_with_guardrails">Auto with Guardrails — Agent acts within limits</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <AutonomySettings
+                    actionAutonomy={actionAutonomy as Record<string, "AUTO" | "AUTO-DRAFT" | "APPROVAL-REQUIRED" | "ALWAYS-MANUAL">}
+                    budgetThreshold={budgetThreshold}
+                    onChange={(a, t) => { setActionAutonomy(a); setBudgetThreshold(t); }}
+                  />
+
+                  {/* Brand Context */}
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <Building2 className="size-4 text-primary" />
+                            BRAND.md — Brand Context
+                          </CardTitle>
+                          <CardDescription>Auto-generated from your brand profile. Illaya uses this to understand your brand.</CardDescription>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => handleRegenerate("brand")} disabled={regenerating === "brand"}>
+                          <RefreshCw className={`size-3.5 ${regenerating === "brand" ? "animate-spin" : ""}`} />
+                          Regenerate
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea value={brandMd} readOnly rows={10} className="font-mono text-xs leading-relaxed bg-muted" placeholder="Update your brand profile, then regenerate." />
+                    </CardContent>
+                  </Card>
+
+                  {/* Model info */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Cpu className="size-4 text-muted-foreground" />
+                        Model Configuration
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-4 max-w-lg">
+                        <div className="flex flex-col gap-1.5">
+                          <Label className="text-xs text-muted-foreground">Model</Label>
+                          <Badge variant="outline">Claude Sonnet 4</Badge>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <Label className="text-xs text-muted-foreground">Provider</Label>
+                          <Badge variant="outline">Anthropic</Badge>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Button onClick={handleSaveConfig} disabled={configSaving} className="w-fit">
+                    <Save className="size-3.5" />
+                    {configSaving ? "Saving..." : "Save Configuration"}
+                  </Button>
+                </>
+              )}
             </div>
-          </CardContent>
-        </Card>
+          )}
+
+          {/* Skills sub-tab */}
+          {activeSubTab === "skills" && <SkillsPage />}
+        </>
       )}
     </div>
   );

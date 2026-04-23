@@ -115,7 +115,7 @@ export function AnalyticsClient({ currency }: AnalyticsClientProps) {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Analytics</h1>
+      <h1 className="font-serif text-2xl tracking-tight">Analytics</h1>
 
       {/* KPI Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -310,7 +310,7 @@ function KPICard({
         </div>
         <div>
           <p className="text-xs text-muted-foreground">{label}</p>
-          <p className="text-lg font-semibold">{value}</p>
+          <p className="font-mono text-lg font-semibold">{value}</p>
         </div>
       </CardContent>
     </Card>

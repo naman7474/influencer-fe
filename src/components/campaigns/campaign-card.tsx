@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Calendar, Target, DollarSign, Users, ArrowRight } from "lucide-react";
+import { Target, Megaphone, Video, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import type { Campaign } from "@/lib/types/database";
 
 /* ------------------------------------------------------------------ */
@@ -17,10 +17,11 @@ interface CampaignCardProps {
   campaign: Campaign;
   creatorCount?: number;
   statusCounts?: Record<string, number>;
+  avatars?: { handle: string; avatar_url: string | null }[];
 }
 
 /* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
+/*  Config                                                             */
 /* ------------------------------------------------------------------ */
 
 function statusBadgeClass(status: string): string {
@@ -32,22 +33,43 @@ function statusBadgeClass(status: string): string {
   return "badge-draft";
 }
 
-function goalLabel(goal: string | null): string {
-  if (!goal) return "Not set";
-  const map: Record<string, string> = {
-    awareness: "Awareness",
-    conversion: "Conversion",
-    ugc_generation: "UGC Generation",
-  };
-  return map[goal] ?? goal;
+function statusBorderClass(status: string): string {
+  const s = status.toLowerCase();
+  if (s === "active") return "before:bg-success";
+  if (s === "paused") return "before:bg-warning";
+  if (s === "completed") return "before:bg-muted-foreground/60";
+  return "before:bg-border"; // draft
 }
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "--";
-  return new Date(dateStr).toLocaleDateString("en-IN", {
+const GOAL_META: Record<
+  string,
+  { label: string; icon: typeof Target; cls: string }
+> = {
+  awareness: {
+    label: "Awareness",
+    icon: Megaphone,
+    cls: "bg-info/15 text-info",
+  },
+  conversion: {
+    label: "Conversion",
+    icon: Target,
+    cls: "bg-primary/15 text-primary",
+  },
+  ugc_generation: {
+    label: "UGC",
+    icon: Video,
+    cls: "bg-[rgba(180,120,220,0.15)] text-[#c9a0e8]",
+  },
+};
+
+function formatDateCompact(dateStr: string | null): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  const now = new Date();
+  return d.toLocaleDateString("en-IN", {
     month: "short",
     day: "numeric",
-    year: "numeric",
+    ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
   });
 }
 
@@ -59,106 +81,157 @@ export function CampaignCard({
   campaign,
   creatorCount = 0,
   statusCounts = {},
+  avatars = [],
 }: CampaignCardProps) {
-  const shortlisted = statusCounts["shortlisted"] ?? 0;
   const confirmed =
     (statusCounts["confirmed"] ?? 0) +
     (statusCounts["content_live"] ?? 0) +
     (statusCounts["completed"] ?? 0);
-  const live = statusCounts["content_live"] ?? 0;
+
+  const progressPct =
+    creatorCount > 0 ? Math.round((confirmed / creatorCount) * 100) : 0;
+
+  const goalMeta = GOAL_META[campaign.goal ?? ""] ?? null;
+
+  const dateRange = [
+    formatDateCompact(campaign.start_date),
+    formatDateCompact(campaign.end_date),
+  ]
+    .filter(Boolean)
+    .join(" – ");
+
+  const VISIBLE_AVATARS = 4;
+  const visible = avatars.slice(0, VISIBLE_AVATARS);
+  const overflow = Math.max(0, creatorCount - visible.length);
 
   return (
-    <Card
-      className={cn(
-        "group/campaign-card border-l-3 border-l-transparent transition-all duration-200",
-        "hover:border-l-primary hover:shadow-md",
-      )}
-    >
-      <CardContent className="space-y-3">
-        {/* Header row */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <h3 className="truncate text-sm font-semibold text-foreground">
-              {campaign.name}
-            </h3>
-            {campaign.description && (
-              <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
-                {campaign.description}
-              </p>
-            )}
-          </div>
-          <Badge
-            variant="secondary"
-            className={cn("shrink-0 capitalize", statusBadgeClass(campaign.status))}
-          >
-            {campaign.status}
-          </Badge>
-        </div>
-
-        {/* Goal + Dates */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-          <span className="inline-flex items-center gap-1">
-            <Target className="size-3.5" />
-            {goalLabel(campaign.goal)}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <Calendar className="size-3.5" />
-            {formatDate(campaign.start_date)}
-            {campaign.end_date ? ` - ${formatDate(campaign.end_date)}` : ""}
-          </span>
-        </div>
-
-        {/* Budget + Creators */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-          {campaign.total_budget != null && (
-            <span className="inline-flex items-center gap-1 text-muted-foreground">
-              <DollarSign className="size-3.5" />
-              <span className="font-semibold text-foreground">
-                {formatCurrency(campaign.total_budget, campaign.currency ?? "INR")}
-              </span>
-            </span>
-          )}
-          <span className="inline-flex items-center gap-1 text-muted-foreground">
-            <Users className="size-3.5" />
-            <span className="font-semibold text-foreground">
-              {creatorCount}
-            </span>{" "}
-            creators
-          </span>
-        </div>
-
-        {/* Status breakdown */}
-        {creatorCount > 0 && (
-          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-            {shortlisted > 0 && (
-              <span>
-                {shortlisted} shortlisted
-              </span>
-            )}
-            {confirmed > 0 && (
-              <span className="text-success">
-                {confirmed} confirmed
-              </span>
-            )}
-            {live > 0 && (
-              <span className="text-info">
-                {live} live
-              </span>
-            )}
-          </div>
+    <Link href={`/campaigns/${campaign.id}`} className="block">
+      <Card
+        size="sm"
+        className={cn(
+          "group/campaign-card relative cursor-pointer transition-all duration-200",
+          // Left status rail (always on), flips to primary on hover
+          "before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[3px] before:rounded-l-xl before:transition-colors",
+          statusBorderClass(campaign.status),
+          "hover:before:bg-primary hover:shadow-md hover:-translate-y-0.5",
         )}
-      </CardContent>
+      >
+        <CardContent className="space-y-3">
+          {/* Row 1: Name + description  ·  Status */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <h3 className="truncate text-sm font-semibold leading-tight text-foreground">
+                {campaign.name}
+              </h3>
+              {campaign.description && (
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {campaign.description}
+                </p>
+              )}
+            </div>
+            <Badge
+              variant="secondary"
+              className={cn(
+                "shrink-0 capitalize",
+                statusBadgeClass(campaign.status),
+              )}
+            >
+              {campaign.status}
+            </Badge>
+          </div>
 
-      <CardFooter>
-        <Button
-          variant="outline"
-          size="sm"
-          render={<Link href={`/campaigns/${campaign.id}`} />}
-        >
-          View Campaign
-          <ArrowRight className="size-3.5" />
-        </Button>
-      </CardFooter>
-    </Card>
+          {/* Row 2: Goal badge + date range */}
+          <div className="flex flex-wrap items-center gap-2">
+            {goalMeta && (
+              <Badge
+                variant="secondary"
+                className={cn("gap-1 text-[10px]", goalMeta.cls)}
+              >
+                <goalMeta.icon className="size-3" />
+                {goalMeta.label}
+              </Badge>
+            )}
+            {dateRange && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Calendar className="size-3" />
+                {dateRange}
+              </span>
+            )}
+          </div>
+
+          {/* Row 3: Progress */}
+          {creatorCount > 0 ? (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                <span>
+                  <span className="font-semibold text-foreground">
+                    {confirmed}
+                  </span>{" "}
+                  / {creatorCount} confirmed
+                </span>
+                <span>{progressPct}%</span>
+              </div>
+              <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all duration-300",
+                    progressPct === 100 ? "bg-success" : "bg-primary",
+                  )}
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            </div>
+          ) : (
+            <p className="py-0.5 text-[11px] text-muted-foreground">
+              No creators added yet
+            </p>
+          )}
+
+          {/* Row 4: Budget  ·  Avatar stack */}
+          <div className="flex items-center justify-between gap-2">
+            <span
+              className={cn(
+                "text-xs font-semibold",
+                campaign.total_budget != null
+                  ? "text-foreground"
+                  : "text-muted-foreground",
+              )}
+            >
+              {campaign.total_budget != null
+                ? formatCurrency(
+                    campaign.total_budget,
+                    campaign.currency ?? "INR",
+                  )
+                : "No budget"}
+            </span>
+            {visible.length > 0 && (
+              <div className="flex items-center">
+                <div className="flex -space-x-1.5">
+                  {visible.map((a) => (
+                    <Avatar
+                      key={a.handle}
+                      className="size-6 ring-2 ring-card"
+                      title={`@${a.handle}`}
+                    >
+                      {a.avatar_url && (
+                        <AvatarImage src={a.avatar_url} alt={a.handle} />
+                      )}
+                      <AvatarFallback className="text-[9px] font-medium">
+                        {a.handle.slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  ))}
+                </div>
+                {overflow > 0 && (
+                  <span className="ml-1.5 text-[11px] font-medium text-muted-foreground">
+                    +{overflow}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }

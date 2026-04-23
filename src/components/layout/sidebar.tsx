@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Search,
@@ -12,244 +11,239 @@ import {
   Send,
   BarChart3,
   MessageSquare,
-  CheckSquare,
-  ChevronsLeft,
-  ChevronsRight,
-  Wrench,
-  Zap,
-  Brain,
-  SlidersHorizontal,
+  LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { NotificationBell } from "@/components/layout/notification-bell";
 import type { Brand } from "@/lib/types/database";
-
-const SIDEBAR_COLLAPSED_KEY = "sidebar-collapsed";
 
 interface NavItem {
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  disabled?: boolean;
-  comingSoon?: boolean;
 }
 
-const mainNavItems: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+const navItems: NavItem[] = [
+  { label: "Home", href: "/dashboard", icon: LayoutDashboard },
   { label: "Discover", href: "/discover", icon: Search },
-  { label: "My Creators", href: "/creators", icon: Users },
+  { label: "Creators", href: "/creators", icon: Users },
   { label: "Campaigns", href: "/campaigns", icon: ClipboardList },
   { label: "Outreach", href: "/outreach", icon: Send },
   { label: "Analytics", href: "/analytics", icon: BarChart3 },
+  { label: "Illaya", href: "/agent", icon: MessageSquare },
   { label: "Settings", href: "/settings", icon: Settings },
-];
-
-const agentNavItems: NavItem[] = [
-  { label: "Chat", href: "/agent", icon: MessageSquare },
-  { label: "Skills", href: "/agent/skills", icon: Wrench },
-  { label: "Automations", href: "/agent/automations", icon: Zap },
-  { label: "Memory", href: "/agent/memory", icon: Brain },
-  { label: "Approvals", href: "/approvals", icon: CheckSquare },
-  { label: "Agent Config", href: "/agent/config", icon: SlidersHorizontal },
 ];
 
 interface SidebarProps {
   brand: Brand | null;
+  expanded: boolean;
+  onToggle: () => void;
 }
 
-export function Sidebar({ brand }: SidebarProps) {
+export function Sidebar({ brand, expanded, onToggle }: SidebarProps) {
   const pathname = usePathname();
-  const [userCollapsed, setUserCollapsed] = useState(false);
-  const [autoCollapsed, setAutoCollapsed] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  // Responsive: auto-collapse between 1024-1279px
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(min-width: 1024px) and (max-width: 1279px)");
-    const handleChange = (e: MediaQueryListEvent | MediaQueryList) => {
-      setAutoCollapsed(e.matches);
-    };
-    handleChange(mediaQuery);
-    mediaQuery.addEventListener("change", handleChange);
-    return () => mediaQuery.removeEventListener("change", handleChange);
-  }, []);
-
-  useEffect(() => {
-    setMounted(true);
-    const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
-    if (stored === "true") {
-      setUserCollapsed(true);
-    }
-  }, []);
-
-  const collapsed = autoCollapsed || userCollapsed;
-
-  const toggleCollapsed = useCallback(() => {
-    const next = !userCollapsed;
-    setUserCollapsed(next);
-    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
-  }, [userCollapsed]);
+  const router = useRouter();
 
   const isActive = (href: string) => {
     if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/";
-    // Exact match for /agent to avoid highlighting on /agent/skills etc.
     if (href === "/agent") return pathname === "/agent";
     return pathname.startsWith(href);
   };
 
-  // Prevent flash of wrong state
-  const sidebarWidth = !mounted ? "w-[240px]" : collapsed ? "w-[60px]" : "w-[240px]";
+  const brandInitial = brand?.brand_name?.charAt(0)?.toUpperCase() || "K";
 
   return (
     <aside
       className={cn(
-        "hidden lg:flex flex-col h-screen sticky top-0 border-r bg-sidebar border-sidebar-border transition-all duration-150 ease-out shrink-0 overflow-hidden",
-        sidebarWidth
+        "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex",
+        expanded ? "w-56" : "w-[72px]",
       )}
     >
-      {/* Brand header */}
-      <div className="flex items-center h-14 px-3 gap-3 shrink-0">
-        <div className="flex items-center justify-center size-8 rounded-lg bg-primary text-primary-foreground font-semibold text-sm shrink-0">
-          {brand?.brand_name?.charAt(0)?.toUpperCase() || "B"}
-        </div>
-        {!collapsed && (
-          <span className="text-sm font-semibold text-sidebar-foreground truncate">
-            {brand?.brand_name || "My Brand"}
-          </span>
+      {/* ── Brand row (logo + optional name + toggle) ─────────────── */}
+      <div
+        className={cn(
+          "flex h-16 shrink-0 items-center gap-2",
+          expanded ? "px-3" : "justify-center",
+        )}
+      >
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button className="flex shrink-0 items-center justify-center size-9 rounded-full bg-primary text-primary-foreground font-semibold text-sm transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+            }
+          >
+            {brandInitial}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="start" sideOffset={12}>
+            <div className="px-2 py-1.5">
+              <p className="text-sm font-medium">{brand?.brand_name || "My Brand"}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {brand?.website || "Set up your brand"}
+              </p>
+            </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => router.push("/settings")}>
+              <Settings className="size-4" />
+              Brand Settings
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {expanded && (
+          <>
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+              {brand?.brand_name || "My Brand"}
+            </span>
+            <ToggleButton expanded={expanded} onToggle={onToggle} />
+          </>
         )}
       </div>
 
-      {/* Main navigation */}
-      <nav className="flex-1 px-2 py-2 space-y-1 overflow-y-auto">
-        {mainNavItems.map((item) => {
-          const active = isActive(item.href);
-          const Icon = item.icon;
+      {/* Collapsed-state toggle lives just below the brand logo */}
+      {!expanded && (
+        <div className="flex justify-center pb-1 pt-0">
+          <ToggleButton expanded={expanded} onToggle={onToggle} />
+        </div>
+      )}
 
-          const linkContent = (
-            <Link
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150 ease-out",
-                active
-                  ? "bg-sidebar-accent text-primary font-semibold"
-                  : "text-sidebar-foreground hover:bg-muted",
-                collapsed && "justify-center px-0"
-              )}
-            >
-              <Icon className={cn("size-5 shrink-0", active && "text-primary")} />
-              {!collapsed && <span className="truncate">{item.label}</span>}
-            </Link>
-          );
-
-          if (collapsed) {
-            return (
-              <Tooltip key={item.href}>
-                <TooltipTrigger render={<div />}>
-                  {linkContent}
-                </TooltipTrigger>
-                <TooltipContent side="right">{item.label}</TooltipContent>
-              </Tooltip>
-            );
-          }
-
-          return <div key={item.href}>{linkContent}</div>;
-        })}
-
-        {/* Separator + Agent section */}
-        <div className="my-3 h-px bg-sidebar-border" />
-        {!collapsed && (
-          <div className="px-3 mb-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-              AI Agent
-            </span>
-          </div>
+      {/* ── Navigation ────────────────────────────────────────────── */}
+      <nav
+        className={cn(
+          "flex flex-1 flex-col gap-1 overflow-y-auto py-2",
+          expanded ? "px-2" : "items-center px-2",
         )}
-
-        {agentNavItems.map((item) => {
-          const Icon = item.icon;
-          const agentEnabled = brand?.agent_enabled ?? false;
-
-          if (!agentEnabled) {
-            const disabledContent = (
-              <div
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground/50 cursor-not-allowed select-none",
-                  collapsed && "justify-center px-0"
-                )}
-              >
-                <Icon className="size-5 shrink-0" />
-                {!collapsed && <span className="truncate">{item.label}</span>}
-                {!collapsed && (
-                  <span className="ml-auto text-[10px] font-medium uppercase tracking-wider text-muted-foreground/40">
-                    Soon
-                  </span>
-                )}
-              </div>
-            );
-            return (
-              <Tooltip key={item.label}>
-                <TooltipTrigger render={<div />}>{disabledContent}</TooltipTrigger>
-                <TooltipContent side="right">Enable AI Agent in Settings</TooltipContent>
-              </Tooltip>
-            );
-          }
-
+      >
+        {navItems.map((item) => {
           const active = isActive(item.href);
-          const linkContent = (
-            <Link
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150 ease-out",
-                active
-                  ? "bg-sidebar-accent text-primary font-semibold"
-                  : "text-sidebar-foreground hover:bg-muted",
-                collapsed && "justify-center px-0"
-              )}
-            >
-              <Icon className={cn("size-5 shrink-0", active && "text-primary")} />
-              {!collapsed && <span className="truncate">{item.label}</span>}
-            </Link>
+          const Icon = item.icon;
+          const linkClass = cn(
+            "flex items-center transition-all duration-150 rounded-xl",
+            expanded
+              ? "h-10 w-full gap-3 px-3 text-sm"
+              : "size-10 justify-center",
+            active
+              ? "bg-[var(--db-clay-soft)] text-[var(--db-clay)]"
+              : "text-[var(--db-txt3)] hover:text-[var(--db-txt2)] hover:bg-muted",
           );
 
-          if (collapsed) {
+          if (expanded) {
             return (
-              <Tooltip key={item.label}>
-                <TooltipTrigger render={<div />}>{linkContent}</TooltipTrigger>
-                <TooltipContent side="right">{item.label}</TooltipContent>
-              </Tooltip>
+              <Link key={item.href} href={item.href} className={linkClass}>
+                <Icon className="size-[20px] shrink-0" />
+                <span className="truncate">{item.label}</span>
+              </Link>
             );
           }
-          return <div key={item.label}>{linkContent}</div>;
+
+          return (
+            <Tooltip key={item.href}>
+              <TooltipTrigger render={<div />}>
+                <Link href={item.href} className={linkClass}>
+                  <Icon className="size-[20px]" />
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={8}>
+                {item.label}
+              </TooltipContent>
+            </Tooltip>
+          );
         })}
       </nav>
 
-      {/* Collapse toggle */}
-      <div className="shrink-0 border-t border-sidebar-border p-2">
-        <Button
-          variant="ghost"
-          size={collapsed ? "icon" : "default"}
-          onClick={toggleCollapsed}
-          className={cn(
-            "w-full text-muted-foreground hover:text-sidebar-foreground",
-            !collapsed && "justify-start gap-3 px-3"
-          )}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? (
-            <ChevronsRight className="size-4" />
-          ) : (
-            <>
-              <ChevronsLeft className="size-4" />
-              <span className="text-sm">Collapse</span>
-            </>
-          )}
-        </Button>
+      {/* ── Bottom section: notifications + user ────────────────── */}
+      <div
+        className={cn(
+          "flex shrink-0 gap-2 border-t border-sidebar-border py-3",
+          expanded
+            ? "flex-row items-center justify-between px-3"
+            : "flex-col items-center px-2",
+        )}
+      >
+        <NotificationBell />
+
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button className="flex items-center justify-center size-9 shrink-0 rounded-full bg-muted text-muted-foreground text-xs font-semibold transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring overflow-hidden" />
+            }
+          >
+            {brand?.logo_url ? (
+              <img
+                src={brand.logo_url}
+                alt={brand.brand_name || ""}
+                className="size-full object-cover"
+              />
+            ) : (
+              brandInitial
+            )}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="end" sideOffset={12}>
+            <div className="px-2 py-1.5">
+              <p className="text-sm font-medium">{brand?.brand_name || "My Brand"}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {brand?.website || ""}
+              </p>
+            </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => router.push("/settings")}>
+              <Settings className="size-4" />
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => router.push("/auth/login")}>
+              <LogOut className="size-4" />
+              Sign Out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </aside>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Toggle button                                                      */
+/* ------------------------------------------------------------------ */
+
+function ToggleButton({
+  expanded,
+  onToggle,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const Icon = expanded ? PanelLeftClose : PanelLeftOpen;
+  const label = expanded ? "Collapse sidebar" : "Expand sidebar";
+
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<div />}>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={label}
+          className="flex size-8 items-center justify-center rounded-lg text-[var(--db-txt3)] transition-colors hover:bg-muted hover:text-[var(--db-txt2)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Icon className="size-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right" sideOffset={8}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
   );
 }

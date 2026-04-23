@@ -3,15 +3,14 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   FileText,
-  CheckCircle,
-  XCircle,
-  RotateCcw,
-  ExternalLink,
   Loader2,
   Copy,
   Check,
   Plus,
   Link2,
+  Film,
+  Video,
+  Image as ImageIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -100,9 +99,6 @@ export function ContentTab({ campaignId, creators }: ContentTabProps) {
   const [submissions, setSubmissions] = useState<ContentSubmission[]>([]);
   const [submissionLinks, setSubmissionLinks] = useState<SubmissionLink[]>([]);
   const [loading, setLoading] = useState(true);
-  const [reviewingId, setReviewingId] = useState<string | null>(null);
-  const [reviewFeedback, setReviewFeedback] = useState("");
-  const [submittingReview, setSubmittingReview] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [generatingLinks, setGeneratingLinks] = useState(false);
 
@@ -172,8 +168,7 @@ export function ContentTab({ campaignId, creators }: ContentTabProps) {
   }, [campaignId]);
 
   const handleReview = useCallback(
-    async (submissionId: string, action: string) => {
-      setSubmittingReview(true);
+    async (submissionId: string, action: string, feedback?: string) => {
       try {
         const res = await fetch(
           `/api/content-submissions/${submissionId}/review`,
@@ -182,22 +177,18 @@ export function ContentTab({ campaignId, creators }: ContentTabProps) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               action,
-              feedback: reviewFeedback.trim() || null,
+              feedback: feedback?.trim() || null,
             }),
           }
         );
         if (res.ok) {
           await fetchSubmissions();
-          setReviewingId(null);
-          setReviewFeedback("");
         }
       } catch {
         // Silently fail
-      } finally {
-        setSubmittingReview(false);
       }
     },
-    [reviewFeedback, fetchSubmissions]
+    [fetchSubmissions]
   );
 
   const handleManualSubmit = useCallback(
@@ -436,175 +427,27 @@ export function ContentTab({ campaignId, creators }: ContentTabProps) {
                   </div>
                 )}
 
-                {/* Existing submissions */}
-                {creatorSubs.map((sub) => {
-                  const isReviewing = reviewingId === sub.id;
-                  const analysisData = sub.content_analyses;
-                  const analysisStatus = analysisData?.status ?? sub.analysis_status;
-
-                  return (
-                    <div
-                      key={sub.id}
-                      className="rounded border bg-background p-2.5 space-y-1.5 cursor-pointer hover:border-primary/50 transition-colors"
-                      onClick={() => {
-                        setSelectedSubmissionId(sub.id);
-                        setSelectedCreatorHandle(c.creator.handle);
-                        setSelectedSubStatus(sub.status);
-                      }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <FileText className="size-3.5 text-muted-foreground" />
-                          <Badge
-                            variant="secondary"
-                            className={cn(
-                              "text-[10px]",
-                              statusColor(sub.status)
-                            )}
-                          >
-                            {sub.status.replace("_", " ")}
-                          </Badge>
-                          <span className="text-[10px] text-muted-foreground">
-                            {sub.submission_type}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground">
-                            {new Date(sub.submitted_at).toLocaleDateString(
-                              "en-IN",
-                              { month: "short", day: "numeric" }
-                            )}
-                          </span>
-                          {/* Analysis status + score */}
-                          <AnalysisStatusBadge status={analysisStatus} />
-                          {analysisData?.overall_score != null && analysisStatus === "completed" && (
-                            <AnalysisScoreRing score={analysisData.overall_score} size="sm" />
-                          )}
-                        </div>
-                        {sub.content_url && (
-                          <a
-                            href={sub.content_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-info hover:text-info/80"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <ExternalLink className="size-3.5" />
-                          </a>
-                        )}
-                      </div>
-
-                      {/* Caption preview */}
-                      {sub.caption_text && (
-                        <p className="text-xs text-muted-foreground line-clamp-3 whitespace-pre-wrap">
-                          {sub.caption_text}
-                        </p>
-                      )}
-
-                      {/* Compliance checks */}
-                      {sub.compliance_check && (
-                        <div className="flex flex-wrap gap-2">
-                          <ComplianceBadge
-                            label="#ad"
-                            ok={sub.compliance_check.has_ad_disclosure}
-                          />
-                          <ComplianceBadge
-                            label="Brand tag"
-                            ok={sub.compliance_check.has_brand_tag}
-                          />
-                          {sub.compliance_check.has_discount_code !== null && (
-                            <ComplianceBadge
-                              label="Discount code"
-                              ok={sub.compliance_check.has_discount_code}
-                            />
-                          )}
-                        </div>
-                      )}
-
-                      {/* Review actions */}
-                      {sub.status === "submitted" && (
-                        <div className="pt-1" onClick={(e) => e.stopPropagation()}>
-                          {isReviewing ? (
-                            <div className="space-y-2">
-                              <textarea
-                                placeholder="Feedback (optional)..."
-                                value={reviewFeedback}
-                                onChange={(e) =>
-                                  setReviewFeedback(e.target.value)
-                                }
-                                rows={2}
-                                className="w-full rounded border bg-background px-2 py-1 text-xs resize-none"
-                              />
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  className="h-7 text-xs"
-                                  onClick={() =>
-                                    handleReview(sub.id, "approve")
-                                  }
-                                  disabled={submittingReview}
-                                >
-                                  {submittingReview ? (
-                                    <Loader2 className="size-3 animate-spin mr-1" />
-                                  ) : (
-                                    <CheckCircle className="size-3 mr-1" />
-                                  )}
-                                  Approve
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-xs"
-                                  onClick={() =>
-                                    handleReview(
-                                      sub.id,
-                                      "revision_requested"
-                                    )
-                                  }
-                                  disabled={submittingReview}
-                                >
-                                  <RotateCcw className="size-3 mr-1" />
-                                  Request Revision
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-xs text-destructive"
-                                  onClick={() =>
-                                    handleReview(sub.id, "reject")
-                                  }
-                                  disabled={submittingReview}
-                                >
-                                  <XCircle className="size-3 mr-1" />
-                                  Reject
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs"
-                              onClick={() => setReviewingId(sub.id)}
-                            >
-                              Review
-                            </Button>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Feedback display */}
-                      {sub.feedback && sub.status !== "submitted" && (
-                        <p className="text-xs text-muted-foreground italic">
-                          Feedback: {sub.feedback}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-
-                {creatorSubs.length === 0 && !isAdding && (
-                  <p className="text-[10px] text-muted-foreground italic">
-                    No content submitted yet
-                  </p>
+                {/* Submission tile grid */}
+                {creatorSubs.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                    {creatorSubs.map((sub) => (
+                      <SubmissionTile
+                        key={sub.id}
+                        submission={sub}
+                        onOpen={() => {
+                          setSelectedSubmissionId(sub.id);
+                          setSelectedCreatorHandle(c.creator.handle);
+                          setSelectedSubStatus(sub.status);
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  !isAdding && (
+                    <p className="text-[10px] text-muted-foreground italic">
+                      No content submitted yet
+                    </p>
+                  )
                 )}
               </div>
             );
@@ -623,7 +466,7 @@ export function ContentTab({ campaignId, creators }: ContentTabProps) {
         submissionStatus={selectedSubStatus}
         onReview={async (action, feedback) => {
           if (selectedSubmissionId) {
-            await handleReview(selectedSubmissionId, action);
+            await handleReview(selectedSubmissionId, action, feedback);
             setSelectedSubmissionId(null);
           }
         }}
@@ -632,25 +475,138 @@ export function ContentTab({ campaignId, creators }: ContentTabProps) {
   );
 }
 
-function ComplianceBadge({
-  label,
-  ok,
+
+/* ------------------------------------------------------------------ */
+/*  Submission tile (Instagram-style thumbnail)                        */
+/* ------------------------------------------------------------------ */
+
+function SubmissionTypeGlyph({
+  type,
+  className,
 }: {
-  label: string;
-  ok?: boolean | null;
+  type: string;
+  className?: string;
 }) {
-  if (ok === null || ok === undefined) return null;
+  const t = type.toLowerCase();
+  if (t.includes("reel") || t.includes("video"))
+    return <Video className={className} />;
+  if (t.includes("story")) return <Film className={className} />;
+  if (t.includes("post") || t.includes("image"))
+    return <ImageIcon className={className} />;
+  return <FileText className={className} />;
+}
+
+function SubmissionTile({
+  submission,
+  onOpen,
+}: {
+  submission: ContentSubmission;
+  onOpen: () => void;
+}) {
+  const analysisData = submission.content_analyses;
+  const analysisStatus = analysisData?.status ?? submission.analysis_status;
+  const statusLabel = submission.status.replace(/_/g, " ");
+
   return (
-    <Badge
-      variant="secondary"
+    <button
+      type="button"
+      onClick={onOpen}
       className={cn(
-        "text-[9px]",
-        ok
-          ? "bg-success/10 text-success"
-          : "bg-destructive/10 text-destructive"
+        "group/tile relative block aspect-[4/5] w-full overflow-hidden rounded-lg border bg-muted text-left",
+        "transition-all hover:border-primary/50 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
       )}
     >
-      {ok ? "\u2713" : "\u2717"} {label}
-    </Badge>
+      <div
+        aria-hidden
+        className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-muted-foreground/60"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(45deg, var(--muted) 0 4px, var(--card) 4px 10px)",
+        }}
+      >
+        <SubmissionTypeGlyph
+          type={submission.submission_type}
+          className="size-7"
+        />
+        <span className="text-[10px] uppercase tracking-wider">
+          {submission.submission_type}
+        </span>
+      </div>
+
+      <div className="absolute left-1.5 top-1.5 z-10">
+        <Badge
+          variant="secondary"
+          className={cn(
+            "text-[9px] px-1.5 py-0.5 shadow-sm",
+            statusColor(submission.status),
+          )}
+        >
+          {statusLabel}
+        </Badge>
+      </div>
+
+      {analysisStatus === "completed" &&
+        analysisData?.overall_score != null && (
+          <div className="absolute right-1.5 top-1.5 z-10">
+            <AnalysisScoreRing
+              score={analysisData.overall_score}
+              size="sm"
+            />
+          </div>
+        )}
+
+      <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 via-black/50 to-transparent p-2">
+        {submission.caption_text ? (
+          <p className="line-clamp-2 text-[11px] leading-snug text-white/90">
+            {submission.caption_text}
+          </p>
+        ) : (
+          <p className="text-[10px] italic text-white/60">No caption</p>
+        )}
+        {submission.compliance_check && (
+          <div className="mt-1 flex items-center gap-1 text-[9px]">
+            {submission.compliance_check.has_ad_disclosure != null && (
+              <ComplianceDot
+                ok={submission.compliance_check.has_ad_disclosure}
+                label="#ad"
+              />
+            )}
+            {submission.compliance_check.has_brand_tag != null && (
+              <ComplianceDot
+                ok={submission.compliance_check.has_brand_tag}
+                label="tag"
+              />
+            )}
+            {submission.compliance_check.has_discount_code != null && (
+              <ComplianceDot
+                ok={submission.compliance_check.has_discount_code}
+                label="code"
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      {analysisStatus && analysisStatus !== "completed" && (
+        <div className="absolute bottom-1.5 right-1.5 z-10">
+          <AnalysisStatusBadge status={analysisStatus} />
+        </div>
+      )}
+    </button>
+  );
+}
+
+function ComplianceDot({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-medium",
+        ok
+          ? "bg-success/20 text-success"
+          : "bg-destructive/20 text-destructive",
+      )}
+    >
+      {ok ? "✓" : "✗"} {label}
+    </span>
   );
 }

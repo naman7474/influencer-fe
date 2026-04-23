@@ -3,8 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
-  X,
-  Sparkles,
   RefreshCw,
   ArrowRight,
   MapPin,
@@ -48,8 +46,6 @@ interface DashboardClientProps {
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-const WELCOME_DISMISSED_KEY = "dashboard_welcome_dismissed";
-
 function matchToCreatorCard(m: MatchWithCreator): CreatorCardCreator {
   return {
     creator_id: m.creator_id,
@@ -73,6 +69,13 @@ function matchToCreatorCard(m: MatchWithCreator): CreatorCardCreator {
   };
 }
 
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 function problemTypeBadge(problemType: string | null) {
   switch (problemType) {
     case "awareness_gap":
@@ -84,14 +87,14 @@ function problemTypeBadge(problemType: string | null) {
       );
     case "conversion_gap":
       return (
-        <Badge variant="outline" className="border-yellow-500/50 text-yellow-600 dark:text-yellow-400 text-[11px]">
+        <Badge variant="outline" className="border-warning/50 text-warning text-[11px]">
           <Target className="mr-0.5 size-3" />
           Conversion Gap
         </Badge>
       );
     case "strong_market":
       return (
-        <Badge variant="secondary" className="border-green-500/50 text-green-600 dark:text-green-400 text-[11px]">
+        <Badge variant="secondary" className="border-success/50 text-success text-[11px]">
           <CheckCircle className="mr-0.5 size-3" />
           Strong Market
         </Badge>
@@ -115,7 +118,7 @@ function campaignStatusBadge(status: string) {
       return <Badge variant="outline">Completed</Badge>;
     case "paused":
       return (
-        <Badge variant="outline" className="border-yellow-500/50 text-yellow-600">
+        <Badge variant="outline" className="border-warning/50 text-warning">
           Paused
         </Badge>
       );
@@ -134,20 +137,11 @@ export function DashboardClient({
   campaigns,
   geoData,
 }: DashboardClientProps) {
-  const [showWelcome, setShowWelcome] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [greeting, setGreeting] = useState("Welcome");
 
-  // Check localStorage on mount to decide whether to show welcome banner
   useEffect(() => {
-    const dismissed = localStorage.getItem(WELCOME_DISMISSED_KEY);
-    if (!dismissed) {
-      setShowWelcome(true);
-    }
-  }, []);
-
-  const dismissWelcome = useCallback(() => {
-    setShowWelcome(false);
-    localStorage.setItem(WELCOME_DISMISSED_KEY, "true");
+    setGreeting(getGreeting());
   }, []);
 
   const refreshRecommendations = useCallback(async () => {
@@ -155,7 +149,6 @@ export function DashboardClient({
     try {
       const res = await fetch("/api/matching/compute", { method: "POST" });
       if (res.ok) {
-        // Reload the page to reflect new matches
         window.location.reload();
       }
     } catch {
@@ -167,43 +160,52 @@ export function DashboardClient({
 
   const shopifyConnected = brand.shopify_connected;
 
+  // Compute KPI values from available data
+  const avgMatchScore = topMatches.length > 0
+    ? Math.round(
+        (topMatches.reduce((sum, m) => sum + (m.match_score ?? 0), 0) /
+          topMatches.length) *
+          100
+      )
+    : 0;
+  const activeCampaignCount = campaigns.filter((c) => c.status === "active").length;
+
   return (
-    <div className="space-y-8">
-      {/* ── Welcome Banner ─────────────────────────────────────────── */}
-      {showWelcome && (
-        <Card className="relative overflow-hidden border-primary/30 bg-primary/5">
-          <CardContent className="flex items-start gap-4 py-5">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
-              <Sparkles className="size-5 text-primary" />
-            </div>
-            <div className="flex-1">
-              <h2 className="text-lg font-semibold text-foreground">
-                Welcome, {brand.brand_name}!
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                We found{" "}
-                <span className="font-semibold text-foreground">
-                  {topMatches.length}
-                </span>{" "}
-                creators that match your brand. Explore your recommendations
-                below or discover even more creators.
-              </p>
-            </div>
-            <button
-              onClick={dismissWelcome}
-              className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              aria-label="Dismiss welcome banner"
-            >
-              <X className="size-4" />
-            </button>
-          </CardContent>
-        </Card>
-      )}
+    <div className="space-y-10">
+      {/* ── Hero Greeting ─────────────────────────────────────────── */}
+      <section>
+        <h1 className="font-serif italic text-3xl leading-tight tracking-tight text-foreground md:text-4xl">
+          {greeting}, {brand.brand_name}
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Here&apos;s what&apos;s happening with your creator network.
+        </p>
+      </section>
+
+      {/* ── KPI Stats Row ─────────────────────────────────────────── */}
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KPICard
+          label="Creators Matched"
+          value={topMatches.length.toString()}
+        />
+        <KPICard
+          label="Avg Brand-Fit"
+          value={avgMatchScore > 0 ? `${avgMatchScore}%` : "---"}
+        />
+        <KPICard
+          label="Active Campaigns"
+          value={activeCampaignCount.toString()}
+        />
+        <KPICard
+          label="Geo Regions"
+          value={geoData.length > 0 ? geoData.length.toString() : "---"}
+        />
+      </section>
 
       {/* ── Top Matches ────────────────────────────────────────────── */}
       <section>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-foreground">
+          <h2 className="font-serif text-xl leading-tight text-foreground">
             Your Top Matches
           </h2>
           <div className="flex items-center gap-2">
@@ -216,7 +218,7 @@ export function DashboardClient({
               <RefreshCw
                 className={`size-3.5 ${isRefreshing ? "animate-spin" : ""}`}
               />
-              {isRefreshing ? "Refreshing..." : "Refresh Recommendations"}
+              {isRefreshing ? "Refreshing..." : "Refresh"}
             </Button>
             <Button variant="ghost" size="sm" render={<Link href="/discover" />}>
               View All
@@ -226,24 +228,27 @@ export function DashboardClient({
         </div>
 
         {isRefreshing ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
             {Array.from({ length: 4 }).map((_, i) => (
-              <CreatorCardSkeleton key={i} />
+              <div key={i} className="shrink-0 w-[280px] snap-start">
+                <CreatorCardSkeleton />
+              </div>
             ))}
           </div>
         ) : topMatches.length > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="flex gap-4 overflow-x-auto pb-4 snap-x scrollbar-thin">
             {topMatches.map((match) => (
-              <CreatorCard
-                key={match.id}
-                creator={matchToCreatorCard(match)}
-                matchScore={
-                  match.match_score
-                    ? Math.round(match.match_score * 100)
-                    : null
-                }
-                matchReasons={formatMatchReasons(match)}
-              />
+              <div key={match.id} className="shrink-0 w-[280px] snap-start">
+                <CreatorCard
+                  creator={matchToCreatorCard(match)}
+                  matchScore={
+                    match.match_score
+                      ? Math.round(match.match_score * 100)
+                      : null
+                  }
+                  matchReasons={formatMatchReasons(match)}
+                />
+              </div>
             ))}
           </div>
         ) : (
@@ -262,7 +267,7 @@ export function DashboardClient({
       {/* ── Geo Insights ───────────────────────────────────────────── */}
       <section>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-foreground">
+          <h2 className="font-serif text-xl leading-tight text-foreground">
             Geographic Insights
           </h2>
           {shopifyConnected && geoData.length > 0 && (
@@ -284,7 +289,6 @@ export function DashboardClient({
               const regionName = [region.city, region.state, region.country]
                 .filter(Boolean)
                 .join(", ");
-              // gap_score is already 0-100 scale
               const gapPercent = Math.min(100, Math.round(region.gap_score ?? 0));
 
               return (
@@ -308,7 +312,7 @@ export function DashboardClient({
                             ? "Market Strength"
                             : "Gap Score"}
                         </span>
-                        <span className="font-medium text-foreground">
+                        <span className="font-mono font-medium text-foreground">
                           {gapPercent}%
                         </span>
                       </div>
@@ -318,8 +322,8 @@ export function DashboardClient({
                             region.problem_type === "awareness_gap"
                               ? "bg-destructive"
                               : region.problem_type === "conversion_gap"
-                                ? "bg-yellow-500"
-                                : "bg-green-500"
+                                ? "bg-warning"
+                                : "bg-success"
                           }`}
                           style={{ width: `${gapPercent}%` }}
                         />
@@ -331,7 +335,7 @@ export function DashboardClient({
                       {region.sessions != null && (
                         <span>
                           Sessions:{" "}
-                          <span className="font-medium text-foreground">
+                          <span className="font-mono font-medium text-foreground">
                             {region.sessions.toLocaleString()}
                           </span>
                         </span>
@@ -339,7 +343,7 @@ export function DashboardClient({
                       {region.orders != null && (
                         <span>
                           Orders:{" "}
-                          <span className="font-medium text-foreground">
+                          <span className="font-mono font-medium text-foreground">
                             {region.orders.toLocaleString()}
                           </span>
                         </span>
@@ -347,7 +351,7 @@ export function DashboardClient({
                       {region.conversion_rate != null && (
                         <span>
                           CVR:{" "}
-                          <span className="font-medium text-foreground">
+                          <span className="font-mono font-medium text-foreground">
                             {(region.conversion_rate * 100).toFixed(1)}%
                           </span>
                         </span>
@@ -375,9 +379,7 @@ export function DashboardClient({
                 Connect Shopify for Geographic Insights
               </h3>
               <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                Link your Shopify store to unlock geographic intelligence. See
-                where you have awareness gaps and find creators whose audiences
-                fill those gaps.
+                Link your Shopify store to unlock geographic intelligence.
               </p>
               <Button
                 className="mt-4"
@@ -394,7 +396,7 @@ export function DashboardClient({
       {/* ── Active Campaigns ───────────────────────────────────────── */}
       <section>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-foreground">
+          <h2 className="font-serif text-xl leading-tight text-foreground">
             Active Campaigns
           </h2>
           <Button variant="ghost" size="sm" render={<Link href="/campaigns" />}>
@@ -434,7 +436,7 @@ export function DashboardClient({
                         </span>
                       )}
                       {campaign.total_budget != null && (
-                        <span className="inline-flex items-center gap-1">
+                        <span className="inline-flex items-center gap-1 font-mono">
                           <TrendingUp className="size-3" />
                           {formatCurrency(campaign.total_budget, campaign.currency ?? "INR")}
                         </span>
@@ -482,9 +484,6 @@ export function DashboardClient({
 
       {/* ── Quick Actions ──────────────────────────────────────────── */}
       <section>
-        <h2 className="mb-4 text-xl font-semibold text-foreground">
-          Quick Actions
-        </h2>
         <div className="flex flex-wrap gap-3">
           <Button render={<Link href="/campaigns/new" />}>
             <Megaphone className="size-4" />
@@ -506,6 +505,21 @@ export function DashboardClient({
         </div>
       </section>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  KPI Card                                                           */
+/* ------------------------------------------------------------------ */
+
+function KPICard({ label, value }: { label: string; value: string }) {
+  return (
+    <Card>
+      <CardContent className="py-4">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="mt-1 font-mono text-2xl font-bold text-foreground">{value}</p>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -552,10 +566,10 @@ function formatMatchReasons(match: MatchWithCreator): string {
 /* ------------------------------------------------------------------ */
 
 const ZONE_COLORS: Record<IndiaZone, string> = {
-  north: "bg-blue-500",
-  south: "bg-emerald-500",
-  east: "bg-amber-500",
-  west: "bg-purple-500",
+  north: "bg-[var(--db-clay)]",
+  south: "bg-success",
+  east: "bg-warning",
+  west: "bg-[#5b9bd5]",
 };
 
 function ZoneSummary({ geoData, brand }: { geoData: BrandShopifyGeo[]; brand: Brand }) {
@@ -587,7 +601,7 @@ function ZoneSummary({ geoData, brand }: { geoData: BrandShopifyGeo[]; brand: Br
             <p className="text-xs font-semibold text-foreground">
               {ZONE_LABELS[zone].replace(" India", "")}
             </p>
-            <p className="mt-0.5 text-lg font-bold text-foreground">
+            <p className="mt-0.5 font-mono text-lg font-bold text-foreground">
               {oppPercent}%
             </p>
             <p className="text-[10px] text-muted-foreground">

@@ -1,0 +1,340 @@
+{
+  "$defs": {
+    "AuthenticitySignals": {
+      "properties": {
+        "engagement_bait_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engagement Bait Score"
+        },
+        "personal_storytelling_frequency": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Personal Storytelling Frequency"
+        },
+        "product_mentions_feel_natural": {
+          "default": false,
+          "title": "Product Mentions Feel Natural",
+          "type": "boolean"
+        },
+        "uses_personal_anecdotes": {
+          "default": false,
+          "title": "Uses Personal Anecdotes",
+          "type": "boolean"
+        },
+        "vulnerability_openness": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vulnerability Openness"
+        }
+      },
+      "title": "AuthenticitySignals",
+      "type": "object"
+    },
+    "BrandMentions": {
+      "properties": {
+        "brand_categories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Brand Categories",
+          "type": "array"
+        },
+        "organic_brand_mentions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Organic Brand Mentions",
+          "type": "array"
+        },
+        "paid_brand_mentions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Paid Brand Mentions",
+          "type": "array"
+        }
+      },
+      "title": "BrandMentions",
+      "type": "object"
+    },
+    "ContentThemes": {
+      "properties": {
+        "content_pillars": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Content Pillars",
+          "type": "array"
+        },
+        "recurring_topics": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Recurring Topics",
+          "type": "array"
+        },
+        "seasonal_patterns": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seasonal Patterns"
+        }
+      },
+      "title": "ContentThemes",
+      "type": "object"
+    },
+    "CtaPatterns": {
+      "properties": {
+        "conversion_oriented": {
+          "default": false,
+          "title": "Conversion Oriented",
+          "type": "boolean"
+        },
+        "cta_examples": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Cta Examples",
+          "type": "array"
+        },
+        "cta_frequency": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cta Frequency"
+        },
+        "dominant_cta_style": {
+          "default": "none",
+          "title": "Dominant Cta Style",
+          "type": "string"
+        }
+      },
+      "title": "CtaPatterns",
+      "type": "object"
+    },
+    "LanguageAnalysis": {
+      "properties": {
+        "language_mix_percentages": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Language Mix Percentages",
+          "type": "object"
+        },
+        "languages_detected": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Languages Detected",
+          "type": "array"
+        },
+        "primary_language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Primary Language"
+        },
+        "script_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Script Types",
+          "type": "array"
+        },
+        "uses_transliteration": {
+          "default": false,
+          "title": "Uses Transliteration",
+          "type": "boolean"
+        }
+      },
+      "title": "LanguageAnalysis",
+      "type": "object"
+    },
+    "NicheClassification": {
+      "properties": {
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "primary_niche": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Primary Niche"
+        },
+        "reasoning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning"
+        },
+        "secondary_niche": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Secondary Niche"
+        }
+      },
+      "title": "NicheClassification",
+      "type": "object"
+    },
+    "ToneProfile": {
+      "properties": {
+        "authenticity_feel": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authenticity Feel"
+        },
+        "formality_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Formality Score"
+        },
+        "humor_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Humor Score"
+        },
+        "primary_tone": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Primary Tone"
+        },
+        "secondary_tone": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Secondary Tone"
+        }
+      },
+      "title": "ToneProfile",
+      "type": "object"
+    }
+  },
+  "$id": "https://influencer.local/schemas/caption_intelligence.schema.json",
+  "properties": {
+    "authenticity_signals": {
+      "$ref": "#/$defs/AuthenticitySignals"
+    },
+    "brand_mentions": {
+      "$ref": "#/$defs/BrandMentions"
+    },
+    "content_themes": {
+      "$ref": "#/$defs/ContentThemes"
+    },
+    "cta_patterns": {
+      "$ref": "#/$defs/CtaPatterns"
+    },
+    "language_analysis": {
+      "$ref": "#/$defs/LanguageAnalysis"
+    },
+    "niche_classification": {
+      "$ref": "#/$defs/NicheClassification"
+    },
+    "tone_profile": {
+      "$ref": "#/$defs/ToneProfile"
+    }
+  },
+  "title": "CaptionIntelligencePayload",
+  "type": "object"
+}
