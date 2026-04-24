@@ -1,8 +1,117 @@
 /* ══════════════════════════════════════════════════════════════════════
-   Dark Ops — Dashboard design tokens
+   Dashboard design tokens
    Scoped via `.db-shell` on <html> so ALL elements (including portals)
-   inherit the warm dark palette.
+   inherit the warm palette. Supports both dark and light modes.
    ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Light mode (warm parchment — matching onboarding) ──────────── */
+
+.db-shell.db-light {
+  /* Core palette — warm light, inspired by onboarding ob-tokens */
+  --background: #f5f0e8;
+  --foreground: #2a2017;
+  --card: #faf7f2;
+  --card-foreground: #2a2017;
+  --popover: #faf7f2;
+  --popover-foreground: #2a2017;
+  --primary: #c96a3c;
+  --primary-foreground: #ffffff;
+  --secondary: #efe8dc;
+  --secondary-foreground: #2a2017;
+  --muted: #efe8dc;
+  --muted-foreground: #7a6e63;
+  --accent: #e8dfd2;
+  --accent-foreground: #2a2017;
+  --destructive: #d94f4f;
+  --border: #ddd5c8;
+  --input: #efe8dc;
+  --ring: #c96a3c;
+
+  /* Semantic */
+  --success: #3d9960;
+  --warning: #c4882a;
+  --info: #4a86b8;
+  --indigo: #c96a3c;
+  --indigo-soft: rgba(201, 106, 60, 0.10);
+
+  /* Agent design system (light) */
+  --surface-2: #f0ebe3;
+  --surface-3: #e8dfd2;
+  --fg-dim: #7a6e63;
+  --fg-faint: #a09585;
+  --border-strong: #c8bfb0;
+  --amber: #b47a20;
+  --amber-soft: #fef3d8;
+  --success-soft: #e8f5ed;
+  --danger: #b91c1c;
+  --danger-soft: #fef2f2;
+  --accent-fg: #b05a2c;
+
+  /* Chart palette (warm) */
+  --chart-1: #c96a3c;
+  --chart-2: #3d9960;
+  --chart-3: #c4882a;
+  --chart-4: #4a86b8;
+  --chart-5: #d94f4f;
+
+  /* Sidebar */
+  --sidebar: #f0ebe3;
+  --sidebar-foreground: #5a4e42;
+  --sidebar-primary: #c96a3c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e8dfd2;
+  --sidebar-accent-foreground: #2a2017;
+  --sidebar-border: #ddd5c8;
+  --sidebar-ring: #c96a3c;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(42, 32, 23, 0.06);
+  --shadow-md: 0 4px 12px rgba(42, 32, 23, 0.08);
+  --shadow-lg: 0 8px 24px rgba(42, 32, 23, 0.10);
+  --shadow-xl: 0 16px 48px rgba(42, 32, 23, 0.14);
+
+  /* Dashboard-specific tokens */
+  --db-bg: #f5f0e8;
+  --db-bg2: #faf7f2;
+  --db-bg3: #efe8dc;
+  --db-border: #ddd5c8;
+  --db-border2: #c8bfb0;
+  --db-txt: #2a2017;
+  --db-txt2: #5a4e42;
+  --db-txt3: #7a6e63;
+  --db-clay: #c96a3c;
+  --db-clay-soft: rgba(201, 106, 60, 0.10);
+  --db-ok: #3d9960;
+  --db-warn: #c4882a;
+  --db-danger: #d94f4f;
+
+  color-scheme: light;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Light mode badge overrides */
+.db-shell.db-light .badge-nano  { background: #fef0e2; color: #c96a3c; }
+.db-shell.db-light .badge-micro { background: #e8f0fa; color: #4a86b8; }
+.db-shell.db-light .badge-mid   { background: #e8f5ed; color: #3d9960; }
+.db-shell.db-light .badge-macro { background: #f3e8fa; color: #8b5cc4; }
+.db-shell.db-light .badge-mega  { background: #fef2f2; color: #d94f4f; }
+
+.db-shell.db-light .badge-active  { background: #e8f5ed; color: #3d9960; }
+.db-shell.db-light .badge-draft   { background: #efe8dc; color: #7a6e63; border-color: #ddd5c8; }
+.db-shell.db-light .badge-pending { background: #fef3d8; color: #b47a20; }
+
+/* Score gradient (warm light) */
+.db-shell.db-light .cpi-gradient {
+  background: linear-gradient(90deg, #c96a3c, #3d9960);
+}
+
+/* Light mode scrollbar */
+.db-shell.db-light *::-webkit-scrollbar { width: 8px; height: 8px; }
+.db-shell.db-light *::-webkit-scrollbar-track { background: transparent; }
+.db-shell.db-light *::-webkit-scrollbar-thumb { background: rgba(42, 32, 23, 0.12); border-radius: 4px; }
+.db-shell.db-light *::-webkit-scrollbar-thumb:hover { background: rgba(42, 32, 23, 0.20); }
+
+/* ── Dark mode (original warm dark) ─────────────────────────────── */
 
 .db-shell {
   /* Core palette — overrides shadcn CSS custom properties */

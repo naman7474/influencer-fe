@@ -14,8 +14,8 @@ interface CpiRingProps {
  */
 export function CpiRing({
   score,
-  size = 40,
-  strokeWidth = 4,
+  size = 52,
+  strokeWidth = 4.5,
 }: CpiRingProps) {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -71,7 +71,7 @@ export function CpiRing({
 
       {/* Centered label */}
       <span
-        className="absolute text-[16px] font-bold leading-none text-foreground"
+        className="absolute text-[15px] font-bold leading-none text-foreground"
         aria-hidden="true"
       >
         {clamped}

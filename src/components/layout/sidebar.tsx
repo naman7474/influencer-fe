@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { NotificationBell } from "@/components/layout/notification-bell";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import type { Brand } from "@/lib/types/database";
 
 interface NavItem {
@@ -173,6 +174,7 @@ export function Sidebar({ brand, expanded, onToggle }: SidebarProps) {
             : "flex-col items-center px-2",
         )}
       >
+        <ThemeToggle />
         <NotificationBell />
 
         <DropdownMenu>

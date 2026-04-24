@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { NotificationBell } from "@/components/layout/notification-bell";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import type { Brand } from "@/lib/types/database";
 
 interface TopbarProps {
@@ -64,6 +65,7 @@ export function Topbar({ brand, onMobileMenuToggle }: TopbarProps) {
 
       {/* Right section */}
       <div className="flex items-center gap-1">
+        <ThemeToggle />
         <NotificationBell />
 
         {/* User avatar dropdown */}

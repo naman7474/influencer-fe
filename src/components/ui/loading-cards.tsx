@@ -28,7 +28,7 @@ export function CreatorCardSkeleton() {
 
         {/* CPI + engagement */}
         <div className="flex items-center gap-4">
-          <Skeleton className="size-10 rounded-full" />
+          <Skeleton className="size-[52px] rounded-full" />
           <Skeleton className="h-4 w-20" />
         </div>
 

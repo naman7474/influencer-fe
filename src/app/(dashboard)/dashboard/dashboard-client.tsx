@@ -187,18 +187,22 @@ export function DashboardClient({
         <KPICard
           label="Creators Matched"
           value={topMatches.length.toString()}
+          icon={<Users className="size-4" />}
         />
         <KPICard
           label="Avg Brand-Fit"
           value={avgMatchScore > 0 ? `${avgMatchScore}%` : "---"}
+          icon={<Target className="size-4" />}
         />
         <KPICard
           label="Active Campaigns"
           value={activeCampaignCount.toString()}
+          icon={<Megaphone className="size-4" />}
         />
         <KPICard
           label="Geo Regions"
           value={geoData.length > 0 ? geoData.length.toString() : "---"}
+          icon={<Globe className="size-4" />}
         />
       </section>
 
@@ -230,7 +234,7 @@ export function DashboardClient({
         {isRefreshing ? (
           <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="shrink-0 w-[280px] snap-start">
+              <div key={i} className="shrink-0 w-[300px] snap-start">
                 <CreatorCardSkeleton />
               </div>
             ))}
@@ -238,7 +242,7 @@ export function DashboardClient({
         ) : topMatches.length > 0 ? (
           <div className="flex gap-4 overflow-x-auto pb-4 snap-x scrollbar-thin">
             {topMatches.map((match) => (
-              <div key={match.id} className="shrink-0 w-[280px] snap-start">
+              <div key={match.id} className="shrink-0 w-[300px] snap-start">
                 <CreatorCard
                   creator={matchToCreatorCard(match)}
                   matchScore={
@@ -527,11 +531,14 @@ export function DashboardClient({
 /*  KPI Card                                                           */
 /* ------------------------------------------------------------------ */
 
-function KPICard({ label, value }: { label: string; value: string }) {
+function KPICard({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
   return (
     <Card>
       <CardContent className="py-4">
-        <p className="text-xs text-muted-foreground">{label}</p>
+        <div className="flex items-center gap-1.5 text-muted-foreground">
+          {icon}
+          <p className="text-xs">{label}</p>
+        </div>
         <p className="mt-1 font-mono text-2xl font-bold text-foreground">{value}</p>
       </CardContent>
     </Card>

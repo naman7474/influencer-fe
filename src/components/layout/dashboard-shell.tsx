@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useTheme } from "next-themes";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { MobileNav } from "@/components/layout/mobile-nav";
@@ -63,16 +64,28 @@ export function DashboardShell({ brand, children }: DashboardShellProps) {
     });
   };
 
-  /* ── Apply Dark Ops theme to <html> so portals inherit ────────── */
+  /* ── Apply dashboard theme to <html> so portals inherit ──────── */
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme !== "light";
+
   useEffect(() => {
     const html = document.documentElement;
     const hadDark = html.classList.contains("dark");
-    html.classList.add("dark", "db-shell");
+    html.classList.add("db-shell");
+
+    if (isDark) {
+      html.classList.add("dark");
+      html.classList.remove("db-light");
+    } else {
+      html.classList.add("db-light");
+      html.classList.remove("dark");
+    }
+
     return () => {
-      html.classList.remove("db-shell");
+      html.classList.remove("db-shell", "db-light");
       if (!hadDark) html.classList.remove("dark");
     };
-  }, []);
+  }, [isDark]);
 
   /* ── Auto-collapse illaya on narrow viewports ────────────────── */
   useEffect(() => {

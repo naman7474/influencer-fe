@@ -1,7 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { MapPin, Languages, Heart, Eye, UserPlus, BadgeCheck } from "lucide-react";
+import {
+  MapPin,
+  Languages,
+  Heart,
+  Eye,
+  UserPlus,
+  BadgeCheck,
+  Users,
+  Activity,
+  ShieldCheck,
+  TrendingUp,
+  Gauge,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { formatFollowers, formatEngagementRate, getTrendIcon } from "@/lib/format";
@@ -117,11 +129,11 @@ export function CreatorCard({
   return (
     <Card
       className={cn(
-        "group/creator-card border-l-3 border-l-transparent transition-all duration-200",
+        "group/creator-card flex flex-col border-l-3 border-l-transparent transition-all duration-200",
         "hover:border-l-primary hover:shadow-md"
       )}
     >
-      <CardContent className="space-y-3">
+      <CardContent className="flex-1 space-y-3.5">
         {/* ── Row 1: Avatar + Handle + Verified ── */}
         <div className="flex items-center gap-3">
           <Avatar className="size-12">
@@ -152,7 +164,8 @@ export function CreatorCard({
 
         {/* ── Row 2: Followers + Tier ── */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-          <span className="text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+            <Users className="size-3.5" />
             Followers:{" "}
             <span className="font-semibold text-foreground">
               {formatFollowers(followers)}
@@ -171,15 +184,16 @@ export function CreatorCard({
         </div>
 
         {/* ── Row 3: CPI + Engagement Rate ── */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           {cpi != null && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <CpiRing score={cpi} />
-              <span className="text-xs text-muted-foreground">CPI</span>
+              <span className="text-sm font-medium text-muted-foreground">CPI</span>
             </div>
           )}
           {avg_engagement_rate != null && (
-            <span className="text-sm text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Activity className="size-3.5" />
               ER:{" "}
               <span className="font-semibold text-foreground">
                 {formatEngagementRate(avg_engagement_rate)}
@@ -208,13 +222,13 @@ export function CreatorCard({
         {(location || primary_spoken_language) && (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             {location && (
-              <span className="inline-flex items-center gap-1">
+              <span className="inline-flex items-center gap-1.5">
                 <MapPin className="size-3.5" />
                 {location}
               </span>
             )}
             {primary_spoken_language && (
-              <span className="inline-flex items-center gap-1">
+              <span className="inline-flex items-center gap-1.5">
                 <Languages className="size-3.5" />
                 {primary_spoken_language}
               </span>
@@ -226,7 +240,8 @@ export function CreatorCard({
         {(audience_authenticity_score != null || trend) && (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
             {audience_authenticity_score != null && (
-              <span className="text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                <ShieldCheck className="size-3.5" />
                 Authenticity:{" "}
                 <span
                   className={cn(
@@ -240,7 +255,7 @@ export function CreatorCard({
             )}
             {trend && (
               <span
-                className={cn("font-medium", trend.color)}
+                className={cn("inline-flex items-center gap-1 font-medium", trend.color)}
                 data-testid="trend-indicator"
               >
                 {trend.icon} {trend.label}
@@ -252,7 +267,8 @@ export function CreatorCard({
         {/* ── Match Score (conditional) ── */}
         {matchScore != null && (
           <div className="space-y-1.5 pt-1" data-testid="match-section">
-            <p className="text-xs font-semibold text-muted-foreground">
+            <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+              <Gauge className="size-3.5" />
               Match:{" "}
               <span className="text-foreground">{matchScore}%</span>
             </p>
