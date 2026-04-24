@@ -36,6 +36,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { FallbackImg } from "@/components/ui/fallback-img";
 import {
   Progress,
   ProgressLabel,
@@ -456,11 +457,16 @@ export function PerformanceTab({ scores, posts }: PerformanceTabProps) {
                   {/* Thumbnail / placeholder */}
                   <div className="relative aspect-square w-full overflow-hidden bg-muted">
                     {post.thumbnail_url ? (
-                      <img
+                      <FallbackImg
                         src={post.thumbnail_url}
                         alt={post.description?.slice(0, 60) ?? "Post"}
                         className="size-full object-cover transition-transform group-hover/post:scale-105"
                         loading="lazy"
+                        fallback={
+                          <div className="flex size-full items-center justify-center text-muted-foreground">
+                            <ImageIcon className="size-8" />
+                          </div>
+                        }
                       />
                     ) : (
                       <div className="flex size-full items-center justify-center text-muted-foreground">

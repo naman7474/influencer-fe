@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { FallbackImg } from "@/components/ui/fallback-img";
 import type { Brand } from "@/lib/types/database";
 
 interface NavItem {
@@ -184,10 +185,11 @@ export function Sidebar({ brand, expanded, onToggle }: SidebarProps) {
             }
           >
             {brand?.logo_url ? (
-              <img
+              <FallbackImg
                 src={brand.logo_url}
                 alt={brand.brand_name || ""}
                 className="size-full object-cover"
+                fallback={brandInitial}
               />
             ) : (
               brandInitial

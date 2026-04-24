@@ -60,6 +60,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { FallbackImg } from "@/components/ui/fallback-img";
 import { AutonomySettings } from "@/components/agent/autonomy-settings";
 import SkillsPage from "@/app/(dashboard)/agent/skills/page";
 
@@ -576,10 +577,11 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
                 <div className="flex items-center gap-4">
                   <div className="flex size-16 items-center justify-center rounded-lg border border-border bg-muted overflow-hidden">
                     {logoUrl ? (
-                      <img
+                      <FallbackImg
                         src={logoUrl}
                         alt="Brand logo"
                         className="size-full object-cover"
+                        fallback={<ImageIcon className="size-6 text-muted-foreground" />}
                       />
                     ) : (
                       <ImageIcon className="size-6 text-muted-foreground" />

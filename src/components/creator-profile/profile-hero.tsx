@@ -17,6 +17,7 @@ import type {
 } from "@/lib/types/database";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { FallbackImg } from "@/components/ui/fallback-img";
 import { VerdictBanner } from "./verdict-banner";
 import { ScoreRibbon } from "./score-ribbon";
 import { CautionStrip } from "./caution-strip";
@@ -102,10 +103,18 @@ export function ProfileHero({
                 className="size-24 overflow-hidden rounded-full ring-2"
                 style={{ boxShadow: `0 0 0 2px ${avatarColor}44` }}
               >
-                <img
+                <FallbackImg
                   src={creator.avatar_url}
                   alt={creator.display_name ?? creator.handle}
                   className="size-full object-cover"
+                  fallback={
+                    <div
+                      className="flex size-full items-center justify-center text-3xl font-semibold"
+                      style={{ background: `${avatarColor}22`, color: avatarColor }}
+                    >
+                      {initial}
+                    </div>
+                  }
                 />
               </div>
             ) : (

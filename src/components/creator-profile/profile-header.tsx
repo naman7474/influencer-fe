@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FallbackImg } from "@/components/ui/fallback-img";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -95,10 +96,15 @@ export function ProfileHeader({ creator, scores, match }: ProfileHeaderProps) {
             className="size-[72px] overflow-hidden rounded-full ring-2 ring-border"
           >
             {creator.avatar_url ? (
-              <img
+              <FallbackImg
                 src={creator.avatar_url}
                 alt={creator.display_name ?? creator.handle}
                 className="size-full object-cover"
+                fallback={
+                  <div className="flex size-full items-center justify-center bg-muted text-lg font-semibold text-muted-foreground">
+                    {(creator.display_name ?? creator.handle).charAt(0).toUpperCase()}
+                  </div>
+                }
               />
             ) : (
               <div className="flex size-full items-center justify-center bg-muted text-lg font-semibold text-muted-foreground">
