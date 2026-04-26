@@ -1399,7 +1399,10 @@ export async function computeMatchesForBrand(
       match_reasoning: reasoning,
       match_score_breakdown: breakdown as unknown as Database["public"]["Tables"]["creator_brand_matches"]["Insert"]["match_score_breakdown"],
       used_ig_signals: creatorPlatform === "instagram" && hasAnalysisForPlatform,
-      used_platform_signals: usedPlatformSignals as unknown as Database["public"]["Tables"]["creator_brand_matches"]["Insert"]["used_platform_signals"],
+      // Generated types haven't picked up `used_platform_signals` (added in
+      // migration 046) yet, so cast through unknown to keep the build green
+      // until types are regenerated.
+      used_platform_signals: usedPlatformSignals as unknown as never,
       confidence: Math.round(matchConfidence * 100) / 100,
       coverage_percentage: coveragePercentage,
       missing_inputs: missingInputs as unknown as never,
