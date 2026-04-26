@@ -4,7 +4,7 @@ import type { Brand } from "@/lib/types/database";
 import { SettingsClient } from "./settings-client";
 
 export const metadata = {
-  title: "Settings | Influencer Intelligence Platform",
+  title: "Settings | CreatorGoose",
 };
 
 export default async function SettingsPage() {

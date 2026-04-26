@@ -3,7 +3,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { ApprovalsClient } from "./approvals-client";
 
 export const metadata = {
-  title: "Approvals | Influencer Intelligence Platform",
+  title: "Approvals | CreatorGoose",
 };
 
 export default async function ApprovalsPage() {

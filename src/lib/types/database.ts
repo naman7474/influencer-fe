@@ -1,6 +1,6 @@
 /* ------------------------------------------------------------------ */
 /*  Auto-generated-style Supabase Database type definitions            */
-/*  for the Influencer Intelligence Platform                           */
+/*  for CreatorGoose                                                   */
 /* ------------------------------------------------------------------ */
 
 export type Json =

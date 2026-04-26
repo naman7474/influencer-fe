@@ -35,7 +35,7 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "Influencer Intelligence Platform",
+  title: "CreatorGoose",
   description: "Discover, evaluate, and manage influencer partnerships",
 };
 

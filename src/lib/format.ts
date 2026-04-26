@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------ */
-/*  Formatting utilities for the Influencer Intelligence Platform      */
+/*  Formatting utilities for CreatorGoose                              */
 /* ------------------------------------------------------------------ */
 
 /**

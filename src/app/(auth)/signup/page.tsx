@@ -106,9 +106,7 @@ export default function SignupPage() {
     <Card>
       <CardHeader>
         <CardTitle className="text-lg">Create your account</CardTitle>
-        <CardDescription>
-          Get started with Influencer Intelligence
-        </CardDescription>
+        <CardDescription>Get started with CreatorGoose</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">

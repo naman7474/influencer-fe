@@ -21,11 +21,14 @@ export default async function Home() {
       <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-sm">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-              I
+            <div
+              className="flex size-9 items-center justify-center rounded-xl text-white shadow-sm font-heading font-extrabold"
+              style={{ background: "var(--gradient-canva)" }}
+            >
+              G
             </div>
-            <span className="font-heading text-lg font-semibold tracking-tight">
-              Influencer Intel
+            <span className="font-heading text-lg font-extrabold tracking-tight">
+              CreatorGoose
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -116,9 +119,7 @@ export default async function Home() {
       {/* Footer */}
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-6 sm:px-6">
-          <p className="text-xs text-muted-foreground">
-            Influencer Intelligence Platform
-          </p>
+          <p className="text-xs text-muted-foreground">CreatorGoose</p>
           <p className="text-xs text-muted-foreground">
             Built with Next.js and Supabase
           </p>

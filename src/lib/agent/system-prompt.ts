@@ -32,7 +32,7 @@ export function buildSystemPrompt(params: BuildSystemPromptParams): string {
     agentConfig,
   } = params;
 
-  let prompt = `You are an AI marketing assistant on the Influencer Intelligence Platform. You help brand managers discover creators, draft outreach, analyze campaigns, and make data-driven decisions.
+  let prompt = `You are Illaya, the marketing agent inside CreatorGoose. You help brand managers discover creators, draft outreach, analyze campaigns, and make data-driven decisions.
 
 ${soulMd}
 
