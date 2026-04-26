@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export function creatorSearchTool(brandId: string, supabase: SupabaseClient) {
   return tool({
     description:
-      "CALL THIS TOOL to search the database for creators/influencers. This is the ONLY way to find real creator data — never invent creator profiles. Supports text search across handle, name, bio, and language. Call it whenever the user asks to find, discover, search, or recommend creators.",
+      "CALL THIS TOOL to search the database for creators/influencers. This is the ONLY way to find real creator data — never invent creator profiles. Supports text search across handle, name, bio, and language, and filtering by platform (Instagram or YouTube). Call it whenever the user asks to find, discover, search, or recommend creators.",
     inputSchema: z.object({
       query: z
         .string()
@@ -19,8 +19,8 @@ export function creatorSearchTool(brandId: string, supabase: SupabaseClient) {
         .describe(
           "Content niche. Common values in database: beauty, fashion, lifestyle, health, entertainment, education, parenting. Uses case-insensitive match."
         ),
-      min_followers: z.number().optional().describe("Minimum follower count"),
-      max_followers: z.number().optional().describe("Maximum follower count"),
+      min_followers: z.number().optional().describe("Minimum follower count (or subscriber count for YouTube)"),
+      max_followers: z.number().optional().describe("Maximum follower count (or subscriber count for YouTube)"),
       tier: z
         .enum(["nano", "micro", "mid", "macro", "mega"])
         .optional()
@@ -38,6 +38,12 @@ export function creatorSearchTool(brandId: string, supabase: SupabaseClient) {
         .number()
         .optional()
         .describe("Minimum CPI (Creator Performance Index) score"),
+      platform: z
+        .enum(["instagram", "youtube"])
+        .optional()
+        .describe(
+          "Filter to creators active on a specific platform. Omit to search across both Instagram and YouTube."
+        ),
       limit: z
         .number()
         .optional()
@@ -57,6 +63,7 @@ export function creatorSearchTool(brandId: string, supabase: SupabaseClient) {
         p_language: params.language || null,
         p_limit: Math.min(params.limit ?? 10, 25),
         p_offset: 0,
+        p_platform: params.platform || null,
       });
       const creators = (data || []) as Record<string, unknown>[];
 
@@ -100,6 +107,7 @@ export function creatorSearchTool(brandId: string, supabase: SupabaseClient) {
           id: c.id,
           handle: c.handle,
           display_name: c.display_name,
+          platform: c.platform,
           followers: c.followers,
           tier: c.tier,
           cpi_score: c.cpi,

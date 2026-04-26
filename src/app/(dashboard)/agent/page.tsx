@@ -36,6 +36,7 @@ import {
   PanelRightOpen,
   RefreshCw,
   MoreHorizontal,
+  Sparkles,
 } from "lucide-react";
 
 /* ── Page entry ────────────────────────────────────────── */
@@ -338,23 +339,34 @@ function AgentPageInner() {
       <div className="flex-1 flex flex-col min-w-0" style={{ background: "var(--background)" }}>
         {/* Top bar */}
         <div
-          className="h-10 px-4 flex items-center gap-2 shrink-0"
+          className="h-11 px-4 flex items-center gap-2 shrink-0"
           style={{ borderBottom: "1px solid var(--border)" }}
         >
+          <span
+            className="grid size-5 place-items-center rounded-md text-white"
+            style={{ background: "var(--gradient-canva)" }}
+            aria-hidden
+          >
+            <Sparkles className="h-3 w-3" />
+          </span>
+          <span className="font-heading text-[12px] font-extrabold text-foreground">
+            Illaya
+          </span>
+          <span style={{ color: "var(--fg-faint)" }} className="text-[12px]">·</span>
           <span
             className="text-[12px] truncate flex-1"
             style={{ color: "var(--muted-foreground)" }}
           >
             {activeSessionId
               ? sessions.find((s) => s.id === activeSessionId)?.title || "Chat"
-              : "New Chat"}
+              : "New chat"}
           </span>
           {activeArtifactId && (
             <span
-              className="text-[10.5px] font-mono px-1.5 py-0.5 rounded hidden lg:inline"
+              className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full hidden lg:inline"
               style={{
-                background: "var(--surface-2)",
-                color: "var(--fg-faint)",
+                background: "var(--canva-purple-soft)",
+                color: "var(--canva-purple)",
               }}
             >
               canvas open

@@ -472,41 +472,79 @@ export function buildBrandZoneNeeds(
   }>,
   targetRegions?: IndiaZone[]
 ): Record<IndiaZone, { opportunity: number; type: "gap" | "strong" | "target" }> {
-  const result: Record<IndiaZone, { opportunity: number; type: "gap" | "strong" | "target" }> = {
+  // Aggregate per-zone as a volume-weighted mean (weighted by orders).
+  // Tracks whether any row in the zone is a gap — if so, the zone's
+  // type is "gap" regardless of what other rows say.
+  const agg: Record<
+    IndiaZone,
+    { weightedOpp: number; totalWeight: number; hasGap: boolean; hasStrong: boolean }
+  > = {
+    north: { weightedOpp: 0, totalWeight: 0, hasGap: false, hasStrong: false },
+    south: { weightedOpp: 0, totalWeight: 0, hasGap: false, hasStrong: false },
+    east: { weightedOpp: 0, totalWeight: 0, hasGap: false, hasStrong: false },
+    west: { weightedOpp: 0, totalWeight: 0, hasGap: false, hasStrong: false },
+  };
+
+  for (const row of geoData) {
+    const zone =
+      resolveZone(row.city ?? "") ?? resolveZone(row.state ?? "");
+    if (!zone) continue;
+
+    // gap_score is stored as a 0-1 (signed in principle, positive = gap).
+    // Historical tests passed values on 0-100 scale, so clamp both ways.
+    const rawGap = row.gap_score ?? 0;
+    const gapScore = Math.max(0, Math.min(1, rawGap > 1 ? rawGap / 100 : rawGap));
+    // Orders is the natural weight. Fall back to 1 so untracked rows
+    // still contribute equally rather than being dropped.
+    const weight = Math.max(1, row.orders ?? 0);
+
+    let stateOpp = 0;
+    if (
+      row.problem_type === "awareness_gap" ||
+      row.problem_type === "conversion_gap"
+    ) {
+      stateOpp = 0.6 + gapScore * 0.4; // [0.6, 1.0]
+      agg[zone].hasGap = true;
+    } else if (row.problem_type === "strong_market") {
+      stateOpp = 0.2 + gapScore * 0.3; // [0.2, 0.5]
+      agg[zone].hasStrong = true;
+    } else {
+      // untracked / null → still occupies the zone but contributes no
+      // opportunity signal. Skip weight entirely to avoid diluting.
+      continue;
+    }
+
+    agg[zone].weightedOpp += stateOpp * weight;
+    agg[zone].totalWeight += weight;
+  }
+
+  const result: Record<
+    IndiaZone,
+    { opportunity: number; type: "gap" | "strong" | "target" }
+  > = {
     north: { opportunity: 0, type: "target" },
     south: { opportunity: 0, type: "target" },
     east: { opportunity: 0, type: "target" },
     west: { opportunity: 0, type: "target" },
   };
-
-  // From Shopify geo data
-  for (const row of geoData) {
-    const zone =
-      resolveZone(row.city ?? "") ??
-      resolveZone(row.state ?? "");
-    if (!zone) continue;
-
-    const gapScore = Math.min(100, row.gap_score ?? 0) / 100; // Normalize to 0-1
-
-    if (row.problem_type === "awareness_gap" || row.problem_type === "conversion_gap") {
-      // Gap zones: high opportunity
-      result[zone].opportunity = Math.max(result[zone].opportunity, 0.6 + gapScore * 0.4);
-      result[zone].type = "gap";
-    } else if (row.problem_type === "strong_market") {
-      // Strong market: moderate opportunity (can still grow)
-      if (result[zone].type !== "gap") {
-        result[zone].opportunity = Math.max(result[zone].opportunity, 0.2 + gapScore * 0.3);
-        result[zone].type = "strong";
-      }
-    }
+  for (const zone of ["north", "south", "east", "west"] as IndiaZone[]) {
+    const a = agg[zone];
+    const opp = a.totalWeight > 0 ? a.weightedOpp / a.totalWeight : 0;
+    const type: "gap" | "strong" | "target" = a.hasGap
+      ? "gap"
+      : a.hasStrong
+        ? "strong"
+        : "target";
+    result[zone] = { opportunity: opp, type };
   }
 
-  // Brand-declared target regions override with high opportunity
+  // Brand-declared target regions: fill in zones that have no Shopify
+  // signal at all (opportunity still 0). Do NOT override zones that
+  // already carry real gap/strong data.
   if (targetRegions?.length) {
     for (const zone of targetRegions) {
-      if (result[zone].type !== "gap") {
-        // Only override if not already a gap zone (gaps are highest priority)
-        result[zone].opportunity = Math.max(result[zone].opportunity, 0.8);
+      if (result[zone].opportunity === 0) {
+        result[zone].opportunity = 0.8;
         result[zone].type = "target";
       }
     }

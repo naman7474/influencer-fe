@@ -1,32 +1,17 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
-import {
-  MapPin,
-  Languages,
-  Heart,
-  Eye,
-  UserPlus,
-  BadgeCheck,
-  Users,
-  Activity,
-  ShieldCheck,
-  TrendingUp,
-  Gauge,
-} from "lucide-react";
+import { Plus, Send, BadgeCheck } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { formatFollowers, formatEngagementRate, getTrendIcon } from "@/lib/format";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import {
+  formatFollowers,
+  formatEngagementRate,
+} from "@/lib/format";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { CpiRing } from "./cpi-ring";
-import { MatchBar } from "./match-bar";
-
-/* ------------------------------------------------------------------ */
-/*  Types                                                              */
-/* ------------------------------------------------------------------ */
+import { MatchRing } from "@/components/creator-profile/canva/match-ring";
+import { AddToCampaignDialog } from "./add-to-campaign-dialog";
 
 export interface CreatorCardCreator {
   creator_id: string;
@@ -45,19 +30,18 @@ export interface CreatorCardCreator {
   primary_tone: string | null;
   primary_spoken_language: string | null;
   audience_authenticity_score: number | null;
+  platform?: "instagram" | "youtube";
 }
 
 export interface CreatorCardProps {
   creator: CreatorCardCreator;
   matchScore?: number | null;
   matchReasons?: string | null;
+  avgViews?: number | null;
+  /** Optional override — when omitted, the card opens the campaign-picker dialog. */
   onAddToCampaign?: (creatorId: string) => void;
-  onSaveToList?: (creatorId: string) => void;
+  onReachOut?: (creatorId: string) => void;
 }
-
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
-/* ------------------------------------------------------------------ */
 
 function getInitials(displayName: string | null, handle: string): string {
   if (displayName) {
@@ -84,23 +68,50 @@ function tierBadgeClass(tier: string): string {
   return map[t] ?? "";
 }
 
-function authenticityColor(score: number): string {
-  if (score >= 80) return "text-success";
-  if (score >= 60) return "text-warning";
-  return "text-destructive";
+function PlatformBadge({ platform }: { platform: "instagram" | "youtube" }) {
+  if (platform === "youtube") {
+    return (
+      <span
+        aria-label="Platform: youtube"
+        data-testid="platform-badge"
+        className="grid h-6 w-6 place-items-center rounded-md text-[10px] font-extrabold text-white shadow-sm"
+        style={{ background: "var(--yt)" }}
+      >
+        YT
+      </span>
+    );
+  }
+  return (
+    <span
+      aria-label="Platform: instagram"
+      data-testid="platform-badge"
+      className="grid h-6 w-6 place-items-center rounded-md text-[10px] font-extrabold text-white shadow-sm"
+      style={{ background: "var(--gradient-instagram)" }}
+    >
+      IG
+    </span>
+  );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Component                                                          */
-/* ------------------------------------------------------------------ */
+function fmtEngagement(rate: number | null): string {
+  if (rate == null) return "—";
+  return rate <= 1 ? formatEngagementRate(rate) : `${rate.toFixed(1)}%`;
+}
+
+function normalizeMatch(score: number | null | undefined): number | null {
+  if (score == null) return null;
+  return score <= 1 ? Math.round(score * 100) : Math.round(score);
+}
 
 export function CreatorCard({
   creator,
   matchScore,
-  matchReasons,
+  matchReasons: _matchReasons,
+  avgViews = null,
   onAddToCampaign,
-  onSaveToList,
+  onReachOut,
 }: CreatorCardProps) {
+  void _matchReasons;
   const {
     creator_id,
     handle,
@@ -109,220 +120,189 @@ export function CreatorCard({
     followers,
     tier,
     is_verified,
-    city,
-    country,
-    cpi,
     avg_engagement_rate,
-    engagement_trend,
     primary_niche,
     primary_tone,
-    primary_spoken_language,
-    audience_authenticity_score,
+    platform,
   } = creator;
 
-  const trend = engagement_trend ? getTrendIcon(engagement_trend) : null;
-  const location = [city, country].filter(Boolean).join(", ");
-  const reasons = matchReasons
-    ? matchReasons.split("|").map((r) => r.trim()).filter(Boolean)
-    : [];
+  const niches = [primary_niche, primary_tone].filter((t): t is string => Boolean(t));
+  const followersLabel = platform === "youtube" ? "Subscribers" : "Followers";
+  const normalizedMatch = normalizeMatch(matchScore);
+
+  const [campaignDialogOpen, setCampaignDialogOpen] = React.useState(false);
+
+  const handleAddClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onAddToCampaign) {
+      onAddToCampaign(creator_id);
+      return;
+    }
+    setCampaignDialogOpen(true);
+  };
+
+  const handleReachOutClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onReachOut?.(creator_id);
+  };
 
   return (
-    <Card
-      className={cn(
-        "group/creator-card flex flex-col border-l-3 border-l-transparent transition-all duration-200",
-        "hover:border-l-primary hover:shadow-md"
-      )}
-    >
-      <CardContent className="flex-1 space-y-3.5">
-        {/* ── Row 1: Avatar + Handle + Verified ── */}
-        <div className="flex items-center gap-3">
-          <Avatar className="size-12">
-            {avatar_url && <AvatarImage src={avatar_url} alt={handle} />}
-            <AvatarFallback>{getInitials(display_name, handle)}</AvatarFallback>
-          </Avatar>
-
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <span className="font-handle truncate text-foreground">
-                @{handle}
-              </span>
-              {is_verified && (
-                <BadgeCheck
-                  className="size-4 shrink-0 text-info"
-                  aria-label="Verified"
-                  data-testid="verified-badge"
-                />
-              )}
-            </div>
-            {display_name && (
-              <p className="truncate text-sm font-medium text-foreground">
-                {display_name}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* ── Row 2: Followers + Tier ── */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-            <Users className="size-3.5" />
-            Followers:{" "}
-            <span className="font-semibold text-foreground">
-              {formatFollowers(followers)}
-            </span>
-          </span>
-          <Badge
-            variant="secondary"
-            className={cn(
-              "capitalize",
-              tierBadgeClass(tier)
-            )}
-            data-testid="tier-badge"
-          >
-            {tier}
-          </Badge>
-        </div>
-
-        {/* ── Row 3: CPI + Engagement Rate ── */}
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          {cpi != null && (
-            <div className="flex items-center gap-2.5">
-              <CpiRing score={cpi} />
-              <span className="text-sm font-medium text-muted-foreground">CPI</span>
-            </div>
-          )}
-          {avg_engagement_rate != null && (
-            <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Activity className="size-3.5" />
-              ER:{" "}
-              <span className="font-semibold text-foreground">
-                {formatEngagementRate(avg_engagement_rate)}
-              </span>
-            </span>
-          )}
-        </div>
-
-        {/* ── Row 4: Niche + Tone ── */}
-        {(primary_niche || primary_tone) && (
-          <div className="flex flex-wrap items-center gap-2">
-            {primary_niche && (
-              <Badge variant="secondary" className="font-normal">
-                {primary_niche}
-              </Badge>
-            )}
-            {primary_tone && (
-              <Badge variant="outline" className="font-normal">
-                {primary_tone}
-              </Badge>
-            )}
-          </div>
+    <>
+      <article
+        className={cn(
+          "group/creator-card relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card transition-shadow",
+          "hover:shadow-[0_8px_24px_rgba(125,42,232,0.12)]",
         )}
+      >
+        {/* Whole-card link layer — sits behind the action buttons */}
+        <Link
+          href={`/creator/${handle}`}
+          aria-label={`Open ${display_name ?? handle} profile`}
+          className="absolute inset-0 z-0 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canva-purple"
+        />
 
-        {/* ── Row 5: Location + Language ── */}
-        {(location || primary_spoken_language) && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-            {location && (
-              <span className="inline-flex items-center gap-1.5">
-                <MapPin className="size-3.5" />
-                {location}
-              </span>
-            )}
-            {primary_spoken_language && (
-              <span className="inline-flex items-center gap-1.5">
-                <Languages className="size-3.5" />
-                {primary_spoken_language}
-              </span>
-            )}
-          </div>
-        )}
+        <div className="relative z-10 flex h-full flex-col gap-4 p-5 pointer-events-none">
+          {/* Top row */}
+          <div className="flex items-start gap-3">
+            <Avatar className="size-12 shrink-0 ring-2 ring-card shadow-sm">
+              {avatar_url && <AvatarImage src={avatar_url} alt={handle} />}
+              <AvatarFallback className="bg-canva-purple-soft text-canva-purple">
+                {getInitials(display_name, handle)}
+              </AvatarFallback>
+            </Avatar>
 
-        {/* ── Row 6: Authenticity + Trend ── */}
-        {(audience_authenticity_score != null || trend) && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-            {audience_authenticity_score != null && (
-              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                <ShieldCheck className="size-3.5" />
-                Authenticity:{" "}
-                <span
-                  className={cn(
-                    "font-semibold",
-                    authenticityColor(audience_authenticity_score)
-                  )}
-                >
-                  {audience_authenticity_score}%
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="truncate font-heading text-[15px] font-extrabold leading-tight text-foreground">
+                  {display_name ?? handle}
                 </span>
-              </span>
-            )}
-            {trend && (
-              <span
-                className={cn("inline-flex items-center gap-1 font-medium", trend.color)}
-                data-testid="trend-indicator"
-              >
-                {trend.icon} {trend.label}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* ── Match Score (conditional) ── */}
-        {matchScore != null && (
-          <div className="space-y-1.5 pt-1" data-testid="match-section">
-            <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-              <Gauge className="size-3.5" />
-              Match:{" "}
-              <span className="text-foreground">{matchScore}%</span>
-            </p>
-            <MatchBar score={matchScore} />
-            {reasons.length > 0 && (
-              <div className="flex flex-wrap gap-1 pt-0.5">
-                {reasons.map((reason) => (
-                  <Badge
-                    key={reason}
-                    variant="secondary"
-                    className="text-[11px] font-normal"
-                  >
-                    {reason}
-                  </Badge>
-                ))}
+                {is_verified && (
+                  <BadgeCheck
+                    data-testid="verified-badge"
+                    className="size-4 shrink-0 text-canva-purple"
+                    aria-label="Verified"
+                  />
+                )}
               </div>
-            )}
+              <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="font-handle truncate">@{handle}</span>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-col items-end gap-1.5">
+              {platform && <PlatformBadge platform={platform} />}
+              <span
+                data-testid="tier-badge"
+                className={cn(
+                  "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide",
+                  tierBadgeClass(tier),
+                )}
+              >
+                {tier}
+              </span>
+            </div>
           </div>
-        )}
-      </CardContent>
 
-      {/* ── Footer: Actions ── */}
-      <CardFooter className="gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          render={<Link href={`/creator/${handle}`} />}
-        >
-          <Eye className="size-3.5" />
-          View
-        </Button>
+          {niches.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {niches.map((n) => (
+                <span
+                  key={n}
+                  className="rounded-full bg-canva-purple-soft px-2.5 py-0.5 text-[11px] font-bold capitalize text-canva-purple"
+                >
+                  {n}
+                </span>
+              ))}
+            </div>
+          )}
 
-        {onAddToCampaign && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onAddToCampaign(creator_id)}
-          >
-            <UserPlus className="size-3.5" />
-            Add to Campaign
-          </Button>
-        )}
+          {/* 4-metric grid */}
+          <div className="grid grid-cols-2 gap-2">
+            <Metric label={followersLabel} value={formatFollowers(followers)} />
+            <Metric label="Engagement" value={fmtEngagement(avg_engagement_rate)} />
+            <Metric
+              label="Avg views"
+              value={avgViews != null ? formatFollowers(avgViews) : "—"}
+            />
+            <BrandMatchMetric score={normalizedMatch} />
+          </div>
 
-        {onSaveToList && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => onSaveToList(creator_id)}
-            aria-label="Save to list"
-          >
-            <Heart className="size-4" />
-          </Button>
-        )}
-      </CardFooter>
-    </Card>
+          {/* Actions — re-enable pointer events on the action row */}
+          <div className="mt-auto flex items-center gap-2 pt-1 pointer-events-auto">
+            <button
+              type="button"
+              onClick={handleAddClick}
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs font-bold text-foreground shadow-sm transition hover:border-canva-purple/40 hover:bg-canva-purple-soft"
+            >
+              <Plus className="size-3.5" />
+              Add to campaign
+            </button>
+            <button
+              type="button"
+              onClick={handleReachOutClick}
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-white shadow-md transition hover:opacity-95"
+              style={{ background: "var(--gradient-canva)" }}
+            >
+              <Send className="size-3.5" />
+              Reach out
+            </button>
+          </div>
+        </div>
+      </article>
+
+      {!onAddToCampaign && (
+        <AddToCampaignDialog
+          open={campaignDialogOpen}
+          onOpenChange={setCampaignDialogOpen}
+          creatorId={creator_id}
+          creatorHandle={handle}
+          matchScore={matchScore ?? null}
+        />
+      )}
+    </>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-muted/60 px-3 py-2">
+      <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className="font-heading text-base font-extrabold leading-tight text-foreground">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function BrandMatchMetric({ score }: { score: number | null }) {
+  if (score == null) {
+    return (
+      <div className="rounded-xl bg-muted/60 px-3 py-2">
+        <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+          Brand match
+        </div>
+        <div className="font-heading text-base font-extrabold leading-tight text-muted-foreground">
+          —
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2.5 rounded-xl bg-[var(--gradient-canva-soft)] px-3 py-2">
+      <MatchRing score={score} size={36} strokeWidth={3.5} />
+      <div className="min-w-0">
+        <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+          Brand match
+        </div>
+        <div className="font-heading text-base font-extrabold leading-tight text-foreground">
+          {score}
+          <span className="text-[10px] font-bold text-muted-foreground">/100</span>
+        </div>
+      </div>
+    </div>
   );
 }

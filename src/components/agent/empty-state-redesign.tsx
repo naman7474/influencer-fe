@@ -73,25 +73,35 @@ export function EmptyStateRedesign({ onSend }: EmptyStateRedesignProps) {
   return (
     <div className="max-w-[840px] mx-auto px-4 pt-10 pb-6">
       {/* Brand */}
-      <div className="flex items-center gap-2.5 mb-1">
-        <Sparkles className="h-5 w-5" style={{ color: "var(--primary)" }} />
+      <div className="flex items-center gap-2.5 mb-3">
         <span
-          className="text-[11px] font-mono uppercase tracking-wider"
-          style={{ color: "var(--fg-faint)" }}
+          className="grid size-9 place-items-center rounded-2xl text-white shadow-md"
+          style={{ background: "var(--gradient-canva)" }}
         >
-          Marketing Agent
+          <Sparkles className="h-4 w-4" />
         </span>
+        <div className="flex flex-col">
+          <span className="font-heading text-[15px] font-extrabold leading-tight text-foreground">
+            Illaya
+          </span>
+          <span
+            className="text-[10px] font-bold uppercase tracking-wider"
+            style={{ color: "var(--fg-faint)" }}
+          >
+            Marketing agent
+          </span>
+        </div>
       </div>
 
       {/* Heading */}
       <h1
-        className="mt-3 font-semibold"
-        style={{ fontSize: 26, letterSpacing: -0.5, color: "var(--foreground)" }}
+        className="mt-3 font-heading font-extrabold canva-gradient-text"
+        style={{ fontSize: 30, letterSpacing: -0.6 }}
       >
         What are we working on?
       </h1>
       <p
-        className="mt-1.5 text-[13.5px]"
+        className="mt-2 text-[13.5px]"
         style={{ color: "var(--fg-dim)", lineHeight: 1.5 }}
       >
         Delegate real work — discovery, outreach, deals, campaign ops. Artifacts
@@ -100,37 +110,34 @@ export function EmptyStateRedesign({ onSend }: EmptyStateRedesignProps) {
       </p>
 
       {/* Prompt groups — 2-col grid */}
-      <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+      <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-6">
         {PROMPT_GROUPS.map((g) => {
           const Icon = g.icon;
           return (
             <div key={g.label}>
-              <div className="flex items-center gap-2 mb-2">
-                <Icon
-                  className="h-3 w-3"
-                  style={{ color: "var(--fg-dim)" }}
-                />
+              <div className="flex items-center gap-2 mb-2.5">
+                <span className="grid size-5 place-items-center rounded-md bg-canva-purple-soft">
+                  <Icon className="h-3 w-3 text-canva-purple" />
+                </span>
                 <span
-                  className="text-[11px] font-mono uppercase tracking-wider"
-                  style={{ color: "var(--fg-dim)" }}
+                  className="text-[11px] font-bold uppercase tracking-wider text-canva-purple"
                 >
                   {g.label}
                 </span>
               </div>
-              <div className="flex flex-col">
+              <div className="flex flex-col gap-0.5">
                 {g.prompts.map((p) => (
                   <button
                     key={p}
                     onClick={() => onSend(p)}
-                    className="text-left text-[12.5px] py-1.5 px-2 -mx-2 rounded-md transition-colors group flex items-center gap-2 hover:bg-surface-2"
+                    className="text-left text-[12.5px] py-1.5 px-2 -mx-2 rounded-lg transition-colors group flex items-center gap-2 hover:bg-canva-purple-soft"
                     style={{ color: "var(--muted-foreground)" }}
                   >
                     <span className="flex-1 truncate group-hover:text-foreground transition-colors">
                       {p}
                     </span>
                     <ArrowUpRight
-                      className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                      style={{ color: "var(--fg-faint)" }}
+                      className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 text-canva-purple"
                     />
                   </button>
                 ))}
@@ -143,10 +150,9 @@ export function EmptyStateRedesign({ onSend }: EmptyStateRedesignProps) {
       {/* Quick start */}
       <div className="mt-10 pt-5 border-t">
         <div className="flex items-center gap-2 mb-3">
-          <Zap className="h-3 w-3" style={{ color: "var(--fg-dim)" }} />
+          <Zap className="h-3 w-3 text-canva-purple" />
           <span
-            className="text-[11px] font-mono uppercase tracking-wider"
-            style={{ color: "var(--fg-dim)" }}
+            className="text-[11px] font-bold uppercase tracking-wider text-canva-purple"
           >
             Quick start
           </span>
@@ -161,8 +167,7 @@ export function EmptyStateRedesign({ onSend }: EmptyStateRedesignProps) {
             <button
               key={prompt}
               onClick={() => onSend(prompt)}
-              className="rounded-full border px-3 py-1.5 text-[12px] transition-all duration-150 hover:border-border-strong hover:bg-surface-2 hover:scale-[1.03] active:scale-[0.97]"
-              style={{ color: "var(--muted-foreground)", background: "var(--card)" }}
+              className="rounded-full border border-border bg-card px-3 py-1.5 text-[12px] text-muted-foreground transition-all duration-150 hover:border-canva-purple/40 hover:bg-canva-purple-soft hover:text-canva-purple hover:scale-[1.03] active:scale-[0.97]"
             >
               {prompt}
             </button>

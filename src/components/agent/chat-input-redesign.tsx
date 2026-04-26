@@ -63,7 +63,7 @@ export function ChatInputRedesign({
 
         {/* Input card */}
         <div
-          className="agent-ring transition-all rounded-xl"
+          className="agent-ring transition-all rounded-2xl shadow-sm"
           style={{
             background: "var(--card)",
             border: "1px solid var(--border)",
@@ -106,19 +106,18 @@ export function ChatInputRedesign({
             <button
               onClick={onSend}
               disabled={!input.trim() || isLoading}
-              className="h-7 px-2.5 rounded-md flex items-center gap-1 text-[11.5px] font-medium transition-opacity"
+              className="h-8 px-3 rounded-xl flex items-center gap-1 text-[12px] font-bold transition-all shadow-sm hover:opacity-95 disabled:cursor-not-allowed"
               style={{
                 background: input.trim()
-                  ? "var(--foreground)"
+                  ? "var(--gradient-canva)"
                   : "var(--surface-3)",
-                color: input.trim()
-                  ? "var(--background)"
-                  : "var(--fg-faint)",
-                opacity: isLoading ? 0.5 : 1,
+                color: input.trim() ? "white" : "var(--fg-faint)",
+                opacity: isLoading ? 0.6 : 1,
               }}
             >
+              {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
               Send
-              <ArrowUp className="h-3 w-3" />
+              <ArrowUp className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>

@@ -1,10 +1,21 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Instrument_Serif } from "next/font/google";
+import {
+  Inter_Tight,
+  DM_Sans,
+  JetBrains_Mono,
+  Instrument_Serif,
+} from "next/font/google";
 import { Providers } from "./providers";
 import "./globals.css";
 
-const inter = Inter({
-  variable: "--font-inter",
+const interTight = Inter_Tight({
+  variable: "--font-inter-tight",
+  subsets: ["latin"],
+  display: "swap",
+});
+
+const dmSans = DM_Sans({
+  variable: "--font-dm-sans",
   subsets: ["latin"],
   display: "swap",
 });
@@ -37,7 +48,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${inter.variable} ${jetbrainsMono.variable} ${instrumentSerif.variable} h-full antialiased`}
+      className={`${dmSans.variable} ${interTight.variable} ${jetbrainsMono.variable} ${instrumentSerif.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans">
         <Providers>{children}</Providers>

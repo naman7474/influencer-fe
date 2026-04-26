@@ -63,29 +63,44 @@ export const TIER_RATES: Record<CreatorTier, [number, number]> = {
   mega: [500000, 2000000],
 };
 
-/** Weights for composite score (used when brand has NO IG analysis). */
+/**
+ * Weights for composite score (used when brand has NO IG analysis).
+ * Note: price/budget tier was removed (no pricing data in product). The
+ * old 0.15 budget weight was redistributed proportionally to the four
+ * remaining factors so weights still sum to 1.0. `price_tier_score` is
+ * still computed and persisted for forward-compat but no longer
+ * influences `match_score` or `match_reasoning`.
+ */
 const WEIGHTS = {
-  niche_fit: 0.3,
-  audience_geo: 0.25,
-  budget_fit: 0.15,
-  content_format: 0.15,
-  engagement_quality: 0.15,
+  niche_fit: 0.35,
+  audience_geo: 0.29,
+  budget_fit: 0,
+  content_format: 0.18,
+  engagement_quality: 0.18,
 } as const;
 
 /**
- * Weights used when the brand has completed the IG analysis pipeline.
- * Shifts weight from coarse niche_fit to semantic + past-collab signals
- * which carry finer-grained DNA than the 10-category brand taxonomy.
+ * Weights used when the brand has a completed platform analysis.
+ * Phase 2: renamed from WEIGHTS_WITH_IG. Same weights apply to whichever
+ * platform the brand has analyzed (IG or YT). Retune per-platform after
+ * we have pilot YT CPI data. Budget weight removed (see WEIGHTS note);
+ * the old 0.10 was redistributed proportionally.
  */
-const WEIGHTS_WITH_IG = {
-  niche_fit: 0.15,
-  semantic_similarity: 0.2,
-  past_collab_similarity: 0.15,
-  audience_geo: 0.2,
-  budget_fit: 0.1,
-  content_format: 0.1,
-  engagement_quality: 0.1,
+const WEIGHTS_WITH_PLATFORM_SIGNALS = {
+  niche_fit: 0.17,
+  semantic_similarity: 0.22,
+  past_collab_similarity: 0.17,
+  audience_geo: 0.22,
+  budget_fit: 0,
+  content_format: 0.11,
+  engagement_quality: 0.11,
 } as const;
+
+// Back-compat alias for tests and any external callers that imported the
+// old name. Will be removed with the shadow-column drop migration.
+const WEIGHTS_WITH_IG = WEIGHTS_WITH_PLATFORM_SIGNALS;
+
+type SocialPlatform = "instagram" | "youtube";
 
 // ── Types for internal use ────────────────────────────────────────────
 
@@ -633,7 +648,6 @@ export function computePercentileInPool(score: number, sortedDescScores: number[
 function generateMatchReasoning(
   nicheFit: number,
   audienceGeo: number,
-  budgetFit: number,
   formatFit: number,
   engagementQuality: number,
   brandSafety: number,
@@ -653,10 +667,6 @@ function generateMatchReasoning(
     reasons.push("Good audience overlap with target regions");
   else if (audienceGeo > 0.3)
     reasons.push("Some audience in target regions");
-
-  if (budgetFit >= 0.7) reasons.push("Budget well-matched to creator tier");
-  else if (budgetFit > 0) reasons.push("Partial budget overlap");
-  else reasons.push("Budget mismatch with creator tier");
 
   if (formatFit >= 0.7)
     reasons.push("Content format strongly matches brand preference");
@@ -710,7 +720,8 @@ function deriveBrandTargetZones(brand: Brand): IndiaZone[] {
 export async function computeMatchesForBrand(
   supabase: SupabaseClient<Database>,
   brandId: string,
-  limit: number = 200
+  limit: number = 200,
+  opts?: { platforms?: SocialPlatform[] }
 ): Promise<number> {
   // ── 1. Fetch brand data ─────────────────────────────────────────────
   const { data: brandRow, error: brandError } = await supabase
@@ -729,15 +740,57 @@ export async function computeMatchesForBrand(
     ig_content_dna?: { recurring_topics?: string[] | null } | null;
   };
 
-  // Flip to the IG-aware scoring path only when the pipeline has actually
-  // produced an embedding for this brand. Graceful-degradation default.
-  const hasIgAnalysis =
-    Array.isArray(brand.content_embedding) && brand.content_embedding.length > 0;
-  const brandEmbedding = hasIgAnalysis ? brand.content_embedding ?? null : null;
-  const brandCollaborators = brand.ig_collaborators ?? [];
-  const brandTopics = brand.ig_content_dna?.recurring_topics ?? [];
+  // ── 1a. Determine which platforms to score ──────────────────────────
+  // Phase 2: fetch brand_platform_analyses for every completed platform.
+  // Legacy shadow columns on `brands` are used as a last-resort fallback
+  // so brands onboarded pre-migration-045 still produce IG match rows.
+  const { data: allAnalyses } = await supabase
+    .from("brand_platform_analyses")
+    .select("platform, content_embedding, collaborators, content_dna, analysis_status")
+    .eq("brand_id", brandId);
 
-  // ── 2. Fetch brand_shopify_geo data ─────────────────────────────────
+  type PlatformAnalysis = {
+    platform: SocialPlatform;
+    content_embedding: number[] | null;
+    collaborators: string[] | null;
+    content_dna: { recurring_topics?: string[] | null } | null;
+    analysis_status: string | null;
+  };
+
+  const analysesByPlatform = new Map<SocialPlatform, PlatformAnalysis>();
+  for (const row of (allAnalyses ?? []) as PlatformAnalysis[]) {
+    if (row.analysis_status === "completed" || row.content_embedding) {
+      analysesByPlatform.set(row.platform, row);
+    }
+  }
+
+  // Shadow fallback — if no IG row in brand_platform_analyses but the
+  // legacy columns are populated, synthesize an IG analysis.
+  if (
+    !analysesByPlatform.has("instagram") &&
+    (brand.content_embedding || brand.ig_collaborators?.length || brand.ig_content_dna)
+  ) {
+    analysesByPlatform.set("instagram", {
+      platform: "instagram",
+      content_embedding: brand.content_embedding ?? null,
+      collaborators: brand.ig_collaborators ?? [],
+      content_dna: brand.ig_content_dna ?? null,
+      analysis_status: "completed",
+    });
+  }
+
+  // Narrow to the caller-specified set (if any); otherwise iterate all
+  // analyzed platforms. If the brand has NO analysis at all, fall back
+  // to a single IG pass so every existing caller keeps working.
+  const wantedPlatforms: SocialPlatform[] = opts?.platforms
+    ? opts.platforms.filter((p): p is SocialPlatform =>
+        p === "instagram" || p === "youtube"
+      )
+    : Array.from(analysesByPlatform.keys());
+  const platformsToScore: SocialPlatform[] =
+    wantedPlatforms.length > 0 ? wantedPlatforms : ["instagram"];
+
+  // ── 2. Fetch brand_shopify_geo data (brand-level, shared) ──────────
   const { data: geoRows } = await supabase
     .from("brand_shopify_geo")
     .select("*")
@@ -746,9 +799,14 @@ export async function computeMatchesForBrand(
   const brandGeoData = (geoRows ?? []) as BrandShopifyGeo[];
 
   // ── 3. Fetch top creators from leaderboard ──────────────────────────
+  // Phase 2: filter by platform so a creator on both IG and YT appears
+  // twice (once per platform) with platform-specific intelligence loaded
+  // each time. Multi-platform creators get two match rows, one per
+  // platform, with independent scores.
   const { data: leaderboardRows, error: lbError } = await supabase
     .from("mv_creator_leaderboard")
     .select("*")
+    .in("platform", platformsToScore as unknown as string[])
     .order("cpi", { ascending: false, nullsFirst: false })
     .limit(limit);
 
@@ -786,24 +844,38 @@ export async function computeMatchesForBrand(
     supabase,
   ).catch(() => DEFAULT_BRAND_SAFETY_CALIBRATION);
 
+  // Intelligence fetches are scoped by (creator_id, platform) after
+  // migration 047. A creator on both IG and YT has distinct rows on each
+  // of these tables. We pull both platforms in one call and key the maps
+  // by `${creator_id}:${platform}` below.
   const [captionResult, audienceResult, scoresResult, transcriptResult] = await Promise.all([
     supabase
       .from("caption_intelligence")
-      .select("creator_id, primary_niche, secondary_niche, primary_tone, secondary_tone, formality_score, engagement_bait_score, vulnerability_openness, recurring_topics, brand_categories, data_quality")
-      .in("creator_id", creatorIds),
+      .select("creator_id, platform, primary_niche, secondary_niche, primary_tone, secondary_tone, formality_score, engagement_bait_score, vulnerability_openness, recurring_topics, brand_categories, data_quality")
+      .in("creator_id", creatorIds)
+      .in("platform", platformsToScore as unknown as string[]),
     supabase
       .from("audience_intelligence")
-      .select("creator_id, geo_regions, authenticity_score, suspicious_patterns, sentiment_score, negative_themes, estimated_age_group, data_quality")
-      .in("creator_id", creatorIds),
+      .select("creator_id, platform, geo_regions, authenticity_score, suspicious_patterns, sentiment_score, negative_themes, estimated_age_group, data_quality")
+      .in("creator_id", creatorIds)
+      .in("platform", platformsToScore as unknown as string[]),
     supabase
       .from("creator_scores")
-      .select("creator_id, engagement_quality, content_mix, brand_mentions, professionalism, content_quality, sponsored_post_rate, sponsored_vs_organic_delta, creator_reply_rate")
-      .in("creator_id", creatorIds),
+      .select("creator_id, platform, engagement_quality, content_mix, brand_mentions, professionalism, content_quality, sponsored_post_rate, sponsored_vs_organic_delta, creator_reply_rate")
+      .in("creator_id", creatorIds)
+      .in("platform", platformsToScore as unknown as string[]),
     supabase
       .from("transcript_intelligence")
-      .select("creator_id, primary_spoken_language")
-      .in("creator_id", creatorIds),
+      .select("creator_id, platform, primary_spoken_language")
+      .in("creator_id", creatorIds)
+      .in("platform", platformsToScore as unknown as string[]),
   ]);
+
+  // Intelligence rows created before migration 047 don't have a
+  // `platform` column selected — default to 'instagram' so pre-migration
+  // test fixtures and any legacy rows still key correctly.
+  const key = (creatorId: string, platform: string | null | undefined) =>
+    `${creatorId}:${platform ?? "instagram"}`;
 
   // Index by creator_id for fast lookup
   type CaptionRow = {
@@ -818,9 +890,13 @@ export async function computeMatchesForBrand(
     brand_categories: string[] | null;
     data_quality: { confidence?: number | null; coverage_percentage?: number | null } | null;
   };
+  // Key by "${creator_id}:${platform}" so a multi-platform creator has
+  // distinct IG and YT intelligence rows, not one overwriting the other.
   const captionMap = new Map<string, CaptionRow>();
-  for (const row of (captionResult.data ?? []) as Array<{ creator_id: string } & CaptionRow>) {
-    captionMap.set(row.creator_id, row);
+  for (const row of (captionResult.data ?? []) as Array<
+    { creator_id: string; platform: string } & CaptionRow
+  >) {
+    captionMap.set(key(row.creator_id, row.platform), row);
   }
 
   type AudienceRow = {
@@ -833,8 +909,10 @@ export async function computeMatchesForBrand(
     data_quality: { confidence?: number | null; coverage_percentage?: number | null } | null;
   };
   const audienceMap = new Map<string, AudienceRow>();
-  for (const row of (audienceResult.data ?? []) as Array<{ creator_id: string } & AudienceRow>) {
-    audienceMap.set(row.creator_id, row);
+  for (const row of (audienceResult.data ?? []) as Array<
+    { creator_id: string; platform: string } & AudienceRow
+  >) {
+    audienceMap.set(key(row.creator_id, row.platform), row);
   }
 
   type ScoresRow = {
@@ -848,47 +926,62 @@ export async function computeMatchesForBrand(
     creator_reply_rate: number | null;
   };
   const scoresMap = new Map<string, ScoresRow>();
-  for (const row of (scoresResult.data ?? []) as Array<{ creator_id: string } & ScoresRow>) {
-    scoresMap.set(row.creator_id, row);
+  for (const row of (scoresResult.data ?? []) as Array<
+    { creator_id: string; platform: string } & ScoresRow
+  >) {
+    scoresMap.set(key(row.creator_id, row.platform), row);
   }
 
   const transcriptMap = new Map<string, { primary_spoken_language: string | null }>();
   for (const row of (transcriptResult.data ?? []) as Array<{
     creator_id: string;
+    platform: string;
     primary_spoken_language: string | null;
   }>) {
-    transcriptMap.set(row.creator_id, row);
+    transcriptMap.set(key(row.creator_id, row.platform), row);
   }
 
-  // ── 4c. (IG path only) Fetch creator embeddings + past-collab pool ─
+  // ── 4c. Per-platform creator embeddings (migration 046) ────────────
+  // Load the per-platform creator_content_embeddings table keyed by
+  // (creator_id, platform). The scoring loop below pulls the embedding
+  // matching the row's platform. Brand-side past-collaborator pool is
+  // loaded per platform inside the scoring loop since the resolve RPC
+  // keys off brand (IG shadow path for now — extend in a follow-up).
   const creatorEmbeddingMap = new Map<string, number[] | null>();
-  let pastCollaboratorEmbeddings: (number[] | null)[] = [];
-  if (hasIgAnalysis) {
+  const anyBrandHasAnalysis = Array.from(analysesByPlatform.values()).some(
+    (a) => Array.isArray(a.content_embedding) && a.content_embedding.length > 0,
+  );
+  if (anyBrandHasAnalysis) {
     const { data: embRows } = await supabase
-      .from("creators")
-      .select("id, content_embedding")
-      .in("id", creatorIds);
+      .from("creator_content_embeddings")
+      .select("creator_id, platform, embedding")
+      .in("creator_id", creatorIds)
+      .in("platform", platformsToScore as unknown as string[]);
     for (const row of (embRows ?? []) as Array<{
-      id: string;
-      content_embedding: number[] | null;
+      creator_id: string;
+      platform: string;
+      embedding: number[] | null;
     }>) {
-      creatorEmbeddingMap.set(row.id, row.content_embedding);
+      creatorEmbeddingMap.set(key(row.creator_id, row.platform), row.embedding);
     }
+  }
 
-    if (brandCollaborators.length) {
-      const { data: pastRows } = await supabase.rpc(
-        "fn_resolve_brand_past_collaborators",
-        { p_brand_id: brandId } as never
-      );
-      const pastList =
-        (pastRows as Array<{ content_embedding: number[] | null }> | null) ?? [];
-      pastCollaboratorEmbeddings = pastList
-        .map((r) => r.content_embedding)
-        .filter(
-          (v): v is number[] =>
-            Array.isArray(v) && v.length > 0
-        );
-    }
+  // Past-collab pool: keyed off brand. For now we resolve once using the
+  // IG-side RPC (which reads `brands.ig_collaborators` — the shadow path).
+  // In a follow-up we'll add per-platform resolution so YT briefs match
+  // against YT past collaborators. For now YT briefs re-use the IG pool.
+  let pastCollaboratorEmbeddings: (number[] | null)[] = [];
+  const igAnalysis = analysesByPlatform.get("instagram");
+  if (igAnalysis && (igAnalysis.collaborators?.length ?? 0) > 0) {
+    const { data: pastRows } = await supabase.rpc(
+      "fn_resolve_brand_past_collaborators",
+      { p_brand_id: brandId } as never,
+    );
+    const pastList =
+      (pastRows as Array<{ content_embedding: number[] | null }> | null) ?? [];
+    pastCollaboratorEmbeddings = pastList
+      .map((r) => r.content_embedding)
+      .filter((v): v is number[] => Array.isArray(v) && v.length > 0);
   }
 
   // ── 4b. Build brand zone needs (dashboard uses this) ───────────────
@@ -957,10 +1050,25 @@ export async function computeMatchesForBrand(
   for (const creator of creators) {
     if (!creator.creator_id) continue;
 
-    const captionIntel = captionMap.get(creator.creator_id) ?? null;
-    const audienceIntel = audienceMap.get(creator.creator_id) ?? null;
-    const creatorScores = scoresMap.get(creator.creator_id) ?? null;
-    const transcriptIntel = transcriptMap.get(creator.creator_id) ?? null;
+    // Each leaderboard row is per-(creator, platform). Scope intelligence
+    // + embedding + brand-side analysis to the row's platform.
+    const creatorPlatform: SocialPlatform =
+      ((creator as unknown as { platform?: SocialPlatform }).platform) ?? "instagram";
+    const platformAnalysis = analysesByPlatform.get(creatorPlatform) ?? null;
+    const hasAnalysisForPlatform =
+      Array.isArray(platformAnalysis?.content_embedding) &&
+      (platformAnalysis?.content_embedding?.length ?? 0) > 0;
+    const brandEmbedding: number[] | null = hasAnalysisForPlatform
+      ? (platformAnalysis!.content_embedding as number[])
+      : null;
+    const brandCollaborators = platformAnalysis?.collaborators ?? [];
+    const brandTopics = platformAnalysis?.content_dna?.recurring_topics ?? [];
+    const hasIgAnalysis = creatorPlatform === "instagram" && hasAnalysisForPlatform;
+
+    const captionIntel = captionMap.get(key(creator.creator_id, creatorPlatform)) ?? null;
+    const audienceIntel = audienceMap.get(key(creator.creator_id, creatorPlatform)) ?? null;
+    const creatorScores = scoresMap.get(key(creator.creator_id, creatorPlatform)) ?? null;
+    const transcriptIntel = transcriptMap.get(key(creator.creator_id, creatorPlatform)) ?? null;
 
     // Use caption intelligence for niche, fallback to leaderboard
     const primaryNiche =
@@ -1088,23 +1196,24 @@ export async function computeMatchesForBrand(
       brand.competitor_brands
     );
 
-    // ── IG-signal sub-scores (only meaningful when hasIgAnalysis) ──
-    const creatorEmbedding = hasIgAnalysis
-      ? creatorEmbeddingMap.get(creator.creator_id) ?? null
+    // ── Platform-signal sub-scores (only meaningful when the brand
+    // has a completed analysis for this creator's platform) ──
+    const creatorEmbedding = hasAnalysisForPlatform
+      ? creatorEmbeddingMap.get(key(creator.creator_id, creatorPlatform)) ?? null
       : null;
-    const semanticSimilarity = hasIgAnalysis
+    const semanticSimilarity = hasAnalysisForPlatform
       ? computeSemanticSimilarity(brandEmbedding, creatorEmbedding)
       : 0;
-    const pastCollabSimilarity = hasIgAnalysis
+    const pastCollabSimilarity = hasAnalysisForPlatform
       ? computePastCollabSimilarity(creatorEmbedding, pastCollaboratorEmbeddings)
       : 0;
-    const themeOverlapBonus = hasIgAnalysis
+    const themeOverlapBonus = hasAnalysisForPlatform
       ? computeThemeOverlapBonus(
           brandTopics,
           captionIntel?.recurring_topics ?? null
         )
       : 1.0;
-    const collabNetworkBonus = hasIgAnalysis
+    const collabNetworkBonus = hasAnalysisForPlatform
       ? computeCollabNetworkBonus(creator.handle, brandCollaborators)
       : 1.0;
 
@@ -1118,10 +1227,10 @@ export async function computeMatchesForBrand(
         ? audienceIntel!.data_quality!.confidence!
         : null;
 
-    const baseWeights: Record<string, number> = hasIgAnalysis
-      ? { ...WEIGHTS_WITH_IG }
+    const baseWeights: Record<string, number> = hasAnalysisForPlatform
+      ? { ...WEIGHTS_WITH_PLATFORM_SIGNALS }
       : { ...WEIGHTS };
-    const subScoreValues: Record<string, number> = hasIgAnalysis
+    const subScoreValues: Record<string, number> = hasAnalysisForPlatform
       ? {
           niche_fit: nicheFit,
           semantic_similarity: semanticSimilarity,
@@ -1236,7 +1345,6 @@ export async function computeMatchesForBrand(
     const reasoning = generateMatchReasoning(
       nicheFit,
       audienceGeo,
-      budgetFit,
       formatFit,
       engagementQuality,
       brandSafetyScoreForOutput,
@@ -1258,7 +1366,7 @@ export async function computeMatchesForBrand(
       past_collab_similarity: pastCollabSimilarity,
       theme_overlap_bonus: themeOverlapBonus,
       collab_network_bonus: collabNetworkBonus,
-      weights: hasIgAnalysis ? "with_ig" : "legacy",
+      weights: hasAnalysisForPlatform ? "with_platform_signals" : "legacy",
       weights_adjusted: adjustedWeights,
       data_quality: {
         caption_confidence: captionConfidence,
@@ -1266,9 +1374,17 @@ export async function computeMatchesForBrand(
       },
     };
 
+    // `used_platform_signals` replaces `used_ig_signals` post-migration-046.
+    // IG path keeps the shadow bool for one release so any reader that
+    // predates the refactor still works.
+    const usedPlatformSignals: Record<string, boolean> = {
+      [creatorPlatform]: hasAnalysisForPlatform,
+    };
+
     matchRows.push({
       creator_id: creator.creator_id,
       brand_id: brandId,
+      platform: creatorPlatform,
       match_score: Math.round(finalScore * 1000) / 1000, // 3 decimal places
       niche_fit_score: Math.round(nicheFit * 1000) / 1000,
       audience_geo_score: Math.round(audienceGeo * 1000) / 1000,
@@ -1282,7 +1398,8 @@ export async function computeMatchesForBrand(
       recommended_for: recommendedFor,
       match_reasoning: reasoning,
       match_score_breakdown: breakdown as unknown as Database["public"]["Tables"]["creator_brand_matches"]["Insert"]["match_score_breakdown"],
-      used_ig_signals: hasIgAnalysis,
+      used_ig_signals: creatorPlatform === "instagram" && hasAnalysisForPlatform,
+      used_platform_signals: usedPlatformSignals as unknown as Database["public"]["Tables"]["creator_brand_matches"]["Insert"]["used_platform_signals"],
       confidence: Math.round(matchConfidence * 100) / 100,
       coverage_percentage: coveragePercentage,
       missing_inputs: missingInputs as unknown as never,
@@ -1312,7 +1429,7 @@ export async function computeMatchesForBrand(
       const { error: upsertError } = await supabase
         .from("creator_brand_matches")
         .upsert(batch as never[], {
-          onConflict: "creator_id,brand_id",
+          onConflict: "creator_id,brand_id,platform",
           ignoreDuplicates: false,
         });
 

@@ -276,6 +276,7 @@ describe("creator-search", () => {
       p_language: "Hindi",
       p_limit: 15,
       p_offset: 0,
+      p_platform: null,
     });
   });
 

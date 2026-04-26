@@ -7,10 +7,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter), "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-dm-sans), "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace;
   --font-serif: var(--font-instrument-serif), "Instrument Serif", Georgia, serif;
-  --font-heading: var(--font-inter), "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-inter-tight), "Inter Tight", ui-sans-serif, system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -55,6 +55,16 @@
   --color-indigo: var(--indigo);
   --color-indigo-soft: var(--indigo-soft);
 
+  /* Canva-flavoured palette (creator profile + global accents) */
+  --color-canva-purple: var(--canva-purple);
+  --color-canva-purple-soft: var(--canva-purple-soft);
+  --color-canva-teal: var(--canva-teal);
+  --color-canva-teal-soft: var(--canva-teal-soft);
+  --color-canva-pink: var(--canva-pink);
+  --color-canva-yellow: var(--canva-yellow);
+  --color-ig: var(--ig);
+  --color-yt: var(--yt);
+
   /* Agent design system */
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
@@ -84,64 +94,78 @@
 }
 
 :root {
-  /* -- Design system: Light mode -- */
-  --background: #FFFFFF;
-  --foreground: #111827;
-  --card: #F8F9FB;
-  --card-foreground: #111827;
+  /* -- Design system: Light mode (Canva-flavoured) -- */
+  --background: #F7F5FB;
+  --foreground: #0E0823;
+  --card: #FFFFFF;
+  --card-foreground: #0E0823;
   --popover: #FFFFFF;
-  --popover-foreground: #111827;
-  --primary: #6366F1;
+  --popover-foreground: #0E0823;
+  --primary: #7D2AE8;
   --primary-foreground: #FFFFFF;
-  --secondary: #F8F9FB;
-  --secondary-foreground: #111827;
-  --muted: #F0F2F5;
-  --muted-foreground: #6B7280;
-  --accent: #F0F2F5;
-  --accent-foreground: #111827;
-  --destructive: #EF4444;
-  --border: #E2E5EA;
-  --input: #ECEEF1;
-  --ring: #6366F1;
+  --secondary: #F0E6FF;
+  --secondary-foreground: #4B1A8F;
+  --muted: #F0E6FF;
+  --muted-foreground: #5B5374;
+  --accent: #DEFAFB;
+  --accent-foreground: #0E5C61;
+  --destructive: #E11D48;
+  --border: #E8E4F0;
+  --input: #ECE7F5;
+  --ring: #7D2AE8;
 
   /* Semantic colors */
-  --success: #10B981;
+  --success: #0E9F6E;
   --warning: #F59E0B;
-  --info: #3B82F6;
-  --indigo: #6366F1;
-  --indigo-soft: #EEF2FF;
+  --info: #00C4CC;
+  --indigo: #7D2AE8;
+  --indigo-soft: #F0E6FF;
+
+  /* Canva-flavoured palette */
+  --canva-purple: #7D2AE8;
+  --canva-purple-soft: #F0E6FF;
+  --canva-teal: #00C4CC;
+  --canva-teal-soft: #DEFAFB;
+  --canva-pink: #FF5097;
+  --canva-yellow: #FFC93C;
+  --ig: #E1306C;
+  --yt: #FF0000;
+  --gradient-canva: linear-gradient(135deg, #7D2AE8 0%, #00C4CC 100%);
+  --gradient-canva-soft: linear-gradient(135deg, #F0E6FF 0%, #DEFAFB 100%);
+  --gradient-instagram: linear-gradient(135deg, #FEDA77, #DD2A7B 60%, #515BD4);
+  --gradient-youtube: linear-gradient(135deg, #FF6B6B, #FF0000);
 
   /* Agent design system */
-  --surface-2: #F6F7F9;
-  --surface-3: #F0F2F5;
-  --fg-dim: #6B7280;
-  --fg-faint: #9AA1AB;
-  --border-strong: #D1D5DB;
+  --surface-2: #F4F0FA;
+  --surface-3: #ECE7F5;
+  --fg-dim: #5B5374;
+  --fg-faint: #8B859E;
+  --border-strong: #D6CDE6;
   --amber: #B45309;
   --amber-soft: #FEF3C7;
-  --success-soft: #ECFDF5;
+  --success-soft: #DCFCE7;
   --danger: #B91C1C;
-  --danger-soft: #FEF2F2;
-  --accent-fg: #4338CA;
+  --danger-soft: #FFE4E6;
+  --accent-fg: #4B1A8F;
 
-  /* Chart palette */
-  --chart-1: #6366F1;
-  --chart-2: #10B981;
-  --chart-3: #F59E0B;
-  --chart-4: #3B82F6;
-  --chart-5: #EF4444;
+  /* Chart palette (Canva-aligned) */
+  --chart-1: #7D2AE8;
+  --chart-2: #00C4CC;
+  --chart-3: #FF5097;
+  --chart-4: #FFC93C;
+  --chart-5: #0E9F6E;
 
-  --radius: 0.5rem;
+  --radius: 1rem;
 
   /* Sidebar */
-  --sidebar: #F8F9FB;
-  --sidebar-foreground: #111827;
-  --sidebar-primary: #6366F1;
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #0E0823;
+  --sidebar-primary: #7D2AE8;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #EEF2FF;
-  --sidebar-accent-foreground: #111827;
-  --sidebar-border: #E2E5EA;
-  --sidebar-ring: #6366F1;
+  --sidebar-accent: #F0E6FF;
+  --sidebar-accent-foreground: #4B1A8F;
+  --sidebar-border: #E8E4F0;
+  --sidebar-ring: #7D2AE8;
 
   /* Shadows */
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
@@ -151,31 +175,45 @@
 }
 
 .dark {
-  /* -- Design system: Dark mode -- */
-  --background: #0F1117;
-  --foreground: #F3F4F6;
-  --card: #1A1D27;
-  --card-foreground: #F3F4F6;
-  --popover: #1E2130;
-  --popover-foreground: #F3F4F6;
-  --primary: #818CF8;
+  /* -- Design system: Dark mode (Canva-flavoured) -- */
+  --background: #14101F;
+  --foreground: #F3F0FA;
+  --card: #1B1630;
+  --card-foreground: #F3F0FA;
+  --popover: #1F1A36;
+  --popover-foreground: #F3F0FA;
+  --primary: #9E5BFF;
   --primary-foreground: #FFFFFF;
-  --secondary: #242731;
-  --secondary-foreground: #F3F4F6;
-  --muted: #242731;
-  --muted-foreground: #9CA3AF;
-  --accent: #242731;
-  --accent-foreground: #F3F4F6;
-  --destructive: #EF4444;
-  --border: #2D3039;
-  --input: #23262F;
-  --ring: #818CF8;
+  --secondary: #2A2244;
+  --secondary-foreground: #F3F0FA;
+  --muted: #2A2244;
+  --muted-foreground: #A89BC4;
+  --accent: #1F4A4F;
+  --accent-foreground: #B7F5F7;
+  --destructive: #F87171;
+  --border: #2D2645;
+  --input: #241E3B;
+  --ring: #9E5BFF;
 
   --success: #10B981;
   --warning: #F59E0B;
-  --info: #3B82F6;
-  --indigo: #818CF8;
-  --indigo-soft: rgba(129, 140, 248, 0.15);
+  --info: #33D4DC;
+  --indigo: #9E5BFF;
+  --indigo-soft: rgba(158, 91, 255, 0.18);
+
+  /* Canva-flavoured palette (dark) */
+  --canva-purple: #9E5BFF;
+  --canva-purple-soft: rgba(158, 91, 255, 0.16);
+  --canva-teal: #33D4DC;
+  --canva-teal-soft: rgba(51, 212, 220, 0.16);
+  --canva-pink: #FF5097;
+  --canva-yellow: #FFC93C;
+  --ig: #E1306C;
+  --yt: #FF0000;
+  --gradient-canva: linear-gradient(135deg, #9E5BFF 0%, #33D4DC 100%);
+  --gradient-canva-soft: linear-gradient(135deg, rgba(158, 91, 255, 0.18) 0%, rgba(51, 212, 220, 0.18) 100%);
+  --gradient-instagram: linear-gradient(135deg, #FEDA77, #DD2A7B 60%, #515BD4);
+  --gradient-youtube: linear-gradient(135deg, #FF6B6B, #FF0000);
 
   /* Agent design system (dark) */
   --surface-2: #161924;
@@ -190,20 +228,20 @@
   --danger-soft: rgba(239, 68, 68, 0.12);
   --accent-fg: #A5B0FF;
 
-  --chart-1: #818CF8;
-  --chart-2: #10B981;
-  --chart-3: #F59E0B;
-  --chart-4: #3B82F6;
-  --chart-5: #EF4444;
+  --chart-1: #9E5BFF;
+  --chart-2: #33D4DC;
+  --chart-3: #FF5097;
+  --chart-4: #FFC93C;
+  --chart-5: #34D399;
 
-  --sidebar: #1A1D27;
-  --sidebar-foreground: #F3F4F6;
-  --sidebar-primary: #818CF8;
+  --sidebar: #1B1630;
+  --sidebar-foreground: #F3F0FA;
+  --sidebar-primary: #9E5BFF;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: rgba(129, 140, 248, 0.15);
-  --sidebar-accent-foreground: #F3F4F6;
-  --sidebar-border: #2D3039;
-  --sidebar-ring: #818CF8;
+  --sidebar-accent: rgba(158, 91, 255, 0.18);
+  --sidebar-accent-foreground: #F3F0FA;
+  --sidebar-border: #2D2645;
+  --sidebar-ring: #9E5BFF;
 
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.24);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.32);
@@ -223,27 +261,41 @@
   }
 }
 
-/* Tier badges */
-.badge-nano { background: #FFF7ED; color: #EA580C; }
-.badge-micro { background: #EEF2FF; color: #4F46E5; }
-.badge-mid { background: #F0FDF4; color: #16A34A; }
-.badge-macro { background: #FDF4FF; color: #9333EA; }
-.badge-mega { background: #FEF2F2; color: #EF4444; }
+/* Tier badges (Canva-aligned) */
+.badge-nano { background: #FFF4D6; color: #8A6500; }
+.badge-micro { background: #DEFAFB; color: #0E5C61; }
+.badge-mid { background: #DCFCE7; color: #0E6B3D; }
+.badge-macro { background: #F0E6FF; color: #4B1A8F; }
+.badge-mega { background: #FFE4EC; color: #B30062; }
 
-.dark .badge-nano { background: rgba(234, 88, 12, 0.15); color: #FB923C; }
-.dark .badge-micro { background: rgba(79, 70, 229, 0.15); color: #A5B4FC; }
-.dark .badge-mid { background: rgba(22, 163, 74, 0.15); color: #4ADE80; }
-.dark .badge-macro { background: rgba(147, 51, 234, 0.15); color: #C084FC; }
-.dark .badge-mega { background: rgba(239, 68, 68, 0.15); color: #FCA5A5; }
+.dark .badge-nano { background: rgba(255, 201, 60, 0.18); color: #FFD972; }
+.dark .badge-micro { background: rgba(51, 212, 220, 0.18); color: #6FE6EA; }
+.dark .badge-mid { background: rgba(16, 185, 129, 0.18); color: #5BE3A8; }
+.dark .badge-macro { background: rgba(158, 91, 255, 0.18); color: #C19BFF; }
+.dark .badge-mega { background: rgba(255, 80, 151, 0.18); color: #FF8FB8; }
 
 /* Status badges */
-.badge-active { background: #F0FDF4; color: #16A34A; }
-.badge-draft { background: #F8F9FB; color: #6B7280; border: 1px solid #E2E5EA; }
-.badge-pending { background: #FFFBEB; color: #D97706; }
+.badge-active { background: #DCFCE7; color: #0E6B3D; }
+.badge-draft { background: #F4F0FA; color: #5B5374; border: 1px solid #E8E4F0; }
+.badge-pending { background: #FFF4D6; color: #8A6500; }
 
-/* Score gradient */
+/* Score gradient (Canva purple → teal) */
 .cpi-gradient {
-  background: linear-gradient(90deg, #6366F1, #10B981);
+  background: linear-gradient(90deg, #7D2AE8, #00C4CC);
+}
+
+/* Reusable Canva utility classes */
+.canva-gradient {
+  background: var(--gradient-canva);
+}
+.canva-gradient-soft {
+  background: var(--gradient-canva-soft);
+}
+.canva-gradient-text {
+  background: var(--gradient-canva);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 /* Monospace for handles, codes */

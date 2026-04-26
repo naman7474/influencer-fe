@@ -127,21 +127,32 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        // Find or create thread
-        const { data: existingThreadRow } = await supabase
+        // Find or create thread. Use maybeSingle() so a missing row returns
+        // null cleanly (instead of PGRST116). On a fresh creator, insert a
+        // new thread; if a parallel insert raced us and tripped the unique
+        // (brand_id, creator_id) constraint, re-select the winner.
+        const { data: existingThreadRow, error: existingErr } = await supabase
           .from("message_threads")
           .select("id")
           .eq("brand_id", brand.id)
           .eq("creator_id", recipient.creator_id)
-          .single();
+          .maybeSingle();
 
-        const existingThread = existingThreadRow as { id: string } | null;
+        if (existingErr) {
+          console.error("bulk-send thread lookup error:", existingErr);
+          results.push({
+            creator_id: recipient.creator_id,
+            status: "failed",
+            reason: `Thread lookup: ${existingErr.message}`,
+          });
+          continue;
+        }
 
-        let threadId: string;
-        if (existingThread) {
-          threadId = existingThread.id;
-        } else {
-          const { data: newThreadRow } = await supabase
+        let threadId = (existingThreadRow as { id: string } | null)?.id ?? "";
+
+        if (!threadId) {
+          const nowIso = new Date().toISOString();
+          const { data: newThreadRow, error: newThreadErr } = await supabase
             .from("message_threads")
             .insert({
               brand_id: brand.id,
@@ -150,11 +161,44 @@ export async function POST(request: NextRequest) {
               campaign_id: campaign_id || null,
               outreach_status: "sent",
               last_message_direction: "outbound",
+              last_message_at: nowIso,
             } as never)
             .select("id")
-            .single();
-          const newThread = newThreadRow as { id: string } | null;
-          threadId = newThread?.id || "";
+            .maybeSingle();
+
+          if (newThreadErr) {
+            // Unique-constraint race: another request just created the
+            // thread. Re-select and use that id.
+            if (newThreadErr.code === "23505") {
+              const { data: race } = await supabase
+                .from("message_threads")
+                .select("id")
+                .eq("brand_id", brand.id)
+                .eq("creator_id", recipient.creator_id)
+                .maybeSingle();
+              threadId = (race as { id: string } | null)?.id ?? "";
+            }
+            if (!threadId) {
+              console.error("bulk-send thread insert error:", newThreadErr);
+              results.push({
+                creator_id: recipient.creator_id,
+                status: "failed",
+                reason: `Thread create: ${newThreadErr.message}`,
+              });
+              continue;
+            }
+          } else {
+            threadId = (newThreadRow as { id: string } | null)?.id ?? "";
+          }
+        }
+
+        if (!threadId) {
+          results.push({
+            creator_id: recipient.creator_id,
+            status: "failed",
+            reason: "Could not resolve thread id",
+          });
+          continue;
         }
 
         // Build email HTML
@@ -169,7 +213,7 @@ export async function POST(request: NextRequest) {
         });
 
         // Insert message
-        const { data: messageRow } = await supabase
+        const { data: messageRow, error: messageErr } = await supabase
           .from("outreach_messages")
           .insert({
             brand_id: brand.id,
@@ -187,15 +231,20 @@ export async function POST(request: NextRequest) {
             sender_name: senderName,
           } as never)
           .select("id")
-          .single();
+          .maybeSingle();
 
         const message = messageRow as { id: string } | null;
 
-        if (!message) {
+        if (messageErr || !message) {
+          if (messageErr) {
+            console.error("bulk-send message insert error:", messageErr);
+          }
           results.push({
             creator_id: recipient.creator_id,
             status: "failed",
-            reason: "Failed to create message",
+            reason: messageErr
+              ? `Message: ${messageErr.message}`
+              : "Failed to create message",
           });
           continue;
         }

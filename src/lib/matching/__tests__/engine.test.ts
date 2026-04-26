@@ -483,26 +483,25 @@ describe("computeAudienceGeo", () => {
 
 describe("Composite score formula", () => {
   it("correctly weights sub-scores", () => {
-    // Verify the weights sum to 1.0
-    const totalWeight = 0.3 + 0.25 + 0.15 + 0.15 + 0.15;
-    expect(totalWeight).toBe(1.0);
+    // Budget/price-tier weight removed (no pricing data in product); the
+    // remaining four factors must still sum to 1.0.
+    const totalWeight = 0.35 + 0.29 + 0.18 + 0.18;
+    expect(totalWeight).toBeCloseTo(1.0, 5);
   });
 
   it("computes a full score correctly with all perfect sub-scores", () => {
     const niche = 1.0;
     const geo = 1.0;
-    const budget = 1.0;
     const format = 1.0;
     const engagement = 1.0;
     const authMod = 1.0;
     const compBonus = 1.0;
 
-    const raw =
-      niche * 0.3 + geo * 0.25 + budget * 0.15 + format * 0.15 + engagement * 0.15;
+    const raw = niche * 0.35 + geo * 0.29 + format * 0.18 + engagement * 0.18;
     const final = Math.min(1.0, raw * authMod * compBonus);
 
-    expect(raw).toBe(1.0);
-    expect(final).toBe(1.0);
+    expect(raw).toBeCloseTo(1.0, 5);
+    expect(final).toBeCloseTo(1.0, 5);
   });
 
   it("applies authenticity modifier penalty correctly", () => {
@@ -942,10 +941,10 @@ function chainBuilder(data: unknown[] | null = [], error: unknown = null) {
   const builder: Record<string, unknown> = {};
   const methods = [
     "select", "eq", "neq", "in", "gte", "lte", "ilike", "or",
-    "order", "limit", "single",
+    "order", "limit", "single", "maybeSingle",
   ];
   for (const m of methods) {
-    if (m === "single") {
+    if (m === "single" || m === "maybeSingle") {
       builder[m] = vi.fn().mockImplementation(() => {
         isSingle = true;
         return builder;
@@ -1123,6 +1122,12 @@ describe("computeMatchesForBrand", () => {
         if (table === "creators") return chainBuilder([{
           id: "c1", content_embedding: [0.15, 0.25, 0.35],
         }]);
+        // Phase 2: engine now reads embeddings from the per-platform
+        // creator_content_embeddings table (migration 046).
+        if (table === "creator_content_embeddings") return chainBuilder([{
+          creator_id: "c1", platform: "instagram",
+          embedding: [0.15, 0.25, 0.35],
+        }]);
         if (table === "creator_brand_matches") {
           const b = chainBuilder([]);
           b.upsert = upsertMock;
@@ -1139,7 +1144,7 @@ describe("computeMatchesForBrand", () => {
     expect(count).toBe(1);
     const batch = upsertMock.mock.calls[0][0];
     expect(batch[0].used_ig_signals).toBe(true);
-    expect(batch[0].match_score_breakdown.weights).toBe("with_ig");
+    expect(batch[0].match_score_breakdown.weights).toBe("with_platform_signals");
     expect(batch[0].match_score_breakdown.semantic_similarity).toBeGreaterThan(0);
   });
 

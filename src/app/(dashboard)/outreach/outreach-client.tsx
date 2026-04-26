@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import {
   Send,
   Search,
@@ -135,6 +136,48 @@ export function OutreachClient({ brand, campaigns }: Props) {
   const [campaignFilter, setCampaignFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [composeOpen, setComposeOpen] = useState(false);
+  const [prefillCreator, setPrefillCreator] = useState<{
+    id: string;
+    handle: string;
+    display_name: string | null;
+    contact_email: string | null;
+    avatar_url?: string | null;
+  } | null>(null);
+
+  // Deep-link from Discover / Creator profile: `?compose=1&creator_id=…`
+  // opens the compose modal with that creator pre-selected.
+  useEffect(() => {
+    if (searchParams.get("compose") !== "1") return;
+    const creatorId = searchParams.get("creator_id");
+    if (!creatorId) {
+      setComposeOpen(true);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("creators")
+        .select("id, handle, display_name, contact_email, avatar_url")
+        .eq("id", creatorId)
+        .single();
+      if (cancelled) return;
+      const row = data as
+        | {
+            id: string;
+            handle: string;
+            display_name: string | null;
+            contact_email: string | null;
+            avatar_url: string | null;
+          }
+        | null;
+      if (row) setPrefillCreator(row);
+      setComposeOpen(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams]);
 
   const fetchThreads = useCallback(async () => {
     setLoading(true);
@@ -239,7 +282,12 @@ export function OutreachClient({ brand, campaigns }: Props) {
               <Select value={campaignFilter} onValueChange={(v) => setCampaignFilter(v ?? "all")}>
                 <SelectTrigger className="w-[130px] h-8 text-xs">
                   <Filter className="size-3 mr-1" />
-                  <SelectValue placeholder="Campaign" />
+                  <SelectValue placeholder="Campaign">
+                    {(v) => {
+                      if (v == null || v === "all") return "All campaigns";
+                      return campaigns.find((c) => c.id === v)?.name ?? "All campaigns";
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All campaigns</SelectItem>
@@ -337,11 +385,16 @@ export function OutreachClient({ brand, campaigns }: Props) {
       {/* Compose Modal */}
       <ComposeModal
         open={composeOpen}
-        onOpenChange={setComposeOpen}
+        onOpenChange={(next) => {
+          setComposeOpen(next);
+          if (!next) setPrefillCreator(null);
+        }}
         brand={brand}
         campaigns={campaigns}
+        prefillCreator={prefillCreator ?? undefined}
         onSent={() => {
           setComposeOpen(false);
+          setPrefillCreator(null);
           fetchThreads();
         }}
       />

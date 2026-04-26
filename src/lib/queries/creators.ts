@@ -5,6 +5,9 @@ import type { Database, CreatorLeaderboard } from "@/lib/types/database";
 /*  Filter shape shared between sidebar + query                        */
 /* ------------------------------------------------------------------ */
 
+export type SocialPlatform = "instagram" | "youtube";
+export type PlatformFilter = SocialPlatform | "all";
+
 export interface DiscoveryFilters {
   search: string;
   minFollowers: number;
@@ -19,6 +22,7 @@ export interface DiscoveryFilters {
   contentFormats: string[];
   verifiedOnly: boolean;
   hasContact: boolean;
+  platform: PlatformFilter;
 }
 
 export const DEFAULT_FILTERS: DiscoveryFilters = {
@@ -35,6 +39,7 @@ export const DEFAULT_FILTERS: DiscoveryFilters = {
   contentFormats: [],
   verifiedOnly: false,
   hasContact: false,
+  platform: "all",
 };
 
 /* ------------------------------------------------------------------ */
@@ -64,9 +69,22 @@ export async function searchCreators(
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
+  // When filtering by "all" we show at most one row per creator via the
+  // blended view (highest-CPI platform wins). When filtering by a specific
+  // platform, we hit the per-(creator, platform) leaderboard directly so
+  // that creator appears under the platform the brand is searching on.
+  const view =
+    filters.platform === "all"
+      ? "mv_creator_leaderboard_blended"
+      : "mv_creator_leaderboard";
+
   let query = supabase
-    .from("mv_creator_leaderboard")
+    .from(view)
     .select("*", { count: "exact" });
+
+  if (filters.platform !== "all") {
+    query = query.eq("platform", filters.platform);
+  }
 
   // Text search on handle and display_name
   if (filters.search.trim()) {
