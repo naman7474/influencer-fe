@@ -5,11 +5,9 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Search,
-  Users,
   ClipboardList,
   Settings,
   Send,
-  BarChart3,
   MessageSquare,
   CheckSquare,
   Wrench,
@@ -32,10 +30,8 @@ interface NavItem {
 const mainNavItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Discover", href: "/discover", icon: Search },
-  { label: "My Creators", href: "/creators", icon: Users },
   { label: "Campaigns", href: "/campaigns", icon: ClipboardList },
   { label: "Outreach", href: "/outreach", icon: Send },
-  { label: "Analytics", href: "/analytics", icon: BarChart3 },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 

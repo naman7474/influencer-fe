@@ -39,6 +39,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { CreatorStatusDropdown } from "@/components/campaigns/creator-status-dropdown";
 import { InlineRateEditor } from "@/components/campaigns/inline-rate-editor";
+import { BarterOrderForm } from "@/components/campaigns/barter-order-form";
 
 const CONFIRMED_LIKE_STATUSES = ["confirmed", "content_live", "completed"];
 
@@ -73,6 +74,26 @@ interface MessageThreadPreviewRow {
   last_message_preview: string | null;
 }
 
+interface LivePostMetrics {
+  platform: "instagram" | "youtube";
+  url: string | null;
+  thumbnail: string | null;
+  views: number | null;
+  likes: number | null;
+  comments: number | null;
+  engagement_rate: number | null;
+  posted_at: string | null;
+}
+
+interface BarterOrderRow {
+  id: string;
+  product_title: string | null;
+  status: string | null;
+  retail_value: number | null;
+  shopify_draft_order_id: string | null;
+  created_at: string;
+}
+
 interface SubmissionLinkInfo {
   submission_url: string | null;
   expires_at: string | null;
@@ -84,6 +105,7 @@ interface CreatorPanelProps {
   campaignId: string;
   campaignName: string;
   campaignCurrency: string;
+  brandId: string;
   cc: CampaignCreatorWithDetails | null;
   onUpdated: (next: CampaignCreatorWithDetails) => void;
 }
@@ -94,6 +116,7 @@ export function CreatorPanel({
   campaignId,
   campaignName,
   campaignCurrency,
+  brandId,
   cc,
   onUpdated,
 }: CreatorPanelProps) {
@@ -111,6 +134,10 @@ export function CreatorPanel({
   const [feedbackDraft, setFeedbackDraft] = React.useState("");
   const [showRevisionForm, setShowRevisionForm] = React.useState(false);
   const [linkCopied, setLinkCopied] = React.useState(false);
+  const [barterOrders, setBarterOrders] = React.useState<BarterOrderRow[]>([]);
+  const [showBarterForm, setShowBarterForm] = React.useState(false);
+  const [barterFormKey, setBarterFormKey] = React.useState(0);
+  const [livePost, setLivePost] = React.useState<LivePostMetrics | null>(null);
 
   const creatorId = cc?.creator_id;
   const creator = cc?.creator;
@@ -129,6 +156,9 @@ export function CreatorPanel({
       setSubmissionCopied(false);
       setShowRevisionForm(false);
       setFeedbackDraft("");
+      setBarterOrders([]);
+      setShowBarterForm(false);
+      setLivePost(null);
 
       const [subRes, threadRes, linkRes, ccTokenRes] = await Promise.all([
         supabase
@@ -193,12 +223,115 @@ export function CreatorPanel({
         if (!cancelled) setScan(scanRow as ComplianceScanRow | null);
       }
 
+      // Live post metrics — match the submission URL against creator posts/videos.
+      const isLiveStatus =
+        cc.status === "content_live" || cc.status === "completed";
+      if (isLiveStatus && subRow?.content_url) {
+        const url = subRow.content_url;
+        const igMatch = url.match(/instagram\.com\/(?:p|reel)\/([^/?#]+)/);
+        const ytMatch = url.match(
+          /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([\w-]+)/,
+        );
+
+        if (igMatch) {
+          const shortcode = igMatch[1];
+          const { data: postRow } = await supabase
+            .from("posts")
+            .select(
+              "url, shortcode, likes, num_comments, video_view_count, video_play_count, thumbnail_url, date_posted, engagement_rate",
+            )
+            .eq("creator_id", creatorId)
+            .eq("shortcode", shortcode)
+            .maybeSingle();
+          if (!cancelled && postRow) {
+            const r = postRow as {
+              url: string | null;
+              likes: number | null;
+              num_comments: number | null;
+              video_view_count: number | null;
+              video_play_count: number | null;
+              thumbnail_url: string | null;
+              date_posted: string | null;
+              engagement_rate: number | null;
+            };
+            setLivePost({
+              platform: "instagram",
+              url: r.url,
+              thumbnail: r.thumbnail_url,
+              views: r.video_view_count ?? r.video_play_count ?? null,
+              likes: r.likes,
+              comments: r.num_comments,
+              engagement_rate: r.engagement_rate,
+              posted_at: r.date_posted,
+            });
+          }
+        } else if (ytMatch) {
+          const videoId = ytMatch[1];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data: ytRow } = await (supabase as any)
+            .from("youtube_videos")
+            .select(
+              "url, video_id, view_count, like_count, comment_count, thumbnail_url, published_at",
+            )
+            .eq("creator_id", creatorId)
+            .eq("video_id", videoId)
+            .maybeSingle();
+          if (!cancelled && ytRow) {
+            const r = ytRow as {
+              url: string | null;
+              view_count: number | null;
+              like_count: number | null;
+              comment_count: number | null;
+              thumbnail_url: string | null;
+              published_at: string | null;
+            };
+            const eng =
+              r.view_count && r.view_count > 0
+                ? ((r.like_count ?? 0) + (r.comment_count ?? 0)) /
+                  r.view_count
+                : null;
+            setLivePost({
+              platform: "youtube",
+              url: r.url,
+              thumbnail: r.thumbnail_url,
+              views: r.view_count,
+              likes: r.like_count,
+              comments: r.comment_count,
+              engagement_rate: eng,
+              posted_at: r.published_at,
+            });
+          }
+        }
+      }
+
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
   }, [open, cc, creatorId, campaignId, supabase]);
+
+  // Fetch barter orders for this creator on this campaign.
+  const fetchBarterOrders = React.useCallback(async () => {
+    if (!cc) return;
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/gifting`);
+      if (!res.ok) return;
+      const data = (await res.json()) as { gifts?: Array<BarterOrderRow & { campaign_creator_id?: string; creator_id?: string }> };
+      const all = data.gifts ?? [];
+      const mine = all.filter(
+        (g) => g.campaign_creator_id === cc.id || g.creator_id === cc.creator_id,
+      );
+      setBarterOrders(mine);
+    } catch (err) {
+      console.error("fetch barter orders:", err);
+    }
+  }, [cc, campaignId]);
+
+  React.useEffect(() => {
+    if (!open || !cc) return;
+    fetchBarterOrders();
+  }, [open, cc, fetchBarterOrders]);
 
   // Auto-create the tracking link when status is confirmed-or-later.
   const isConfirmedLike = cc ? CONFIRMED_LIKE_STATUSES.includes(cc.status) : false;
@@ -333,7 +466,10 @@ export function CreatorPanel({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full max-w-[600px] flex-col gap-0 overflow-hidden p-0 sm:max-w-[600px]">
+      <SheetContent
+        className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:!max-w-none"
+        style={{ width: "min(100vw, max(50vw, 640px))" }}
+      >
         <SheetHeader className="flex-row items-start justify-between gap-3 border-b border-border bg-card px-5 py-4">
           {creator ? (
             <div className="flex min-w-0 flex-1 items-start gap-3">
@@ -426,6 +562,78 @@ export function CreatorPanel({
                 </Section>
               )}
 
+              {/* Barter order */}
+              {isConfirmedLike && creator && (
+                <Section
+                  title="Barter order"
+                  badge={
+                    barterOrders.length > 0 ? (
+                      <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-success">
+                        {barterOrders.length} sent
+                      </span>
+                    ) : undefined
+                  }
+                >
+                  {barterOrders.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      {barterOrders.map((o) => (
+                        <div
+                          key={o.id}
+                          className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-sm"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-medium text-foreground">
+                              {o.product_title ?? "Barter item"}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {o.status ?? "draft"}
+                              {o.retail_value != null
+                                ? ` · ${formatCurrency(o.retail_value, campaignCurrency)}`
+                                : ""}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {showBarterForm ? (
+                    <div className="mt-3 rounded-lg border border-border bg-card p-3">
+                      <BarterOrderForm
+                        key={barterFormKey}
+                        campaignId={campaignId}
+                        campaignCreatorId={cc.id}
+                        creatorId={cc.creator_id}
+                        creatorHandle={creator.handle}
+                        creatorName={creator.display_name}
+                        brandId={brandId}
+                        currency={campaignCurrency}
+                        hideRecipient
+                        onSuccess={() => {
+                          setShowBarterForm(false);
+                          setBarterFormKey((k) => k + 1);
+                          fetchBarterOrders();
+                          toast.success("Barter order created");
+                        }}
+                        onCancel={() => setShowBarterForm(false)}
+                      />
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-3"
+                      onClick={() => setShowBarterForm(true)}
+                    >
+                      <Send className="size-3.5" />
+                      {barterOrders.length > 0
+                        ? "Send another barter order"
+                        : "Send barter order"}
+                    </Button>
+                  )}
+                </Section>
+              )}
+
               {/* Submission link (brand → creator upload portal) */}
               <Section
                 title="Submission link"
@@ -445,6 +653,85 @@ export function CreatorPanel({
                   onCopy={copySubmissionLink}
                 />
               </Section>
+
+              {/* Content performance (live metrics) */}
+              {(cc.status === "content_live" || cc.status === "completed") && (
+                <Section title="Content performance">
+                  {livePost ? (
+                    <div className="flex gap-3 rounded-lg border border-border bg-card p-3">
+                      {livePost.thumbnail ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={livePost.thumbnail}
+                          alt=""
+                          className="size-20 shrink-0 rounded-md object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="size-20 shrink-0 rounded-md bg-muted" />
+                      )}
+                      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                          {livePost.platform}
+                          {livePost.url && (
+                            <a
+                              href={livePost.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="ml-auto inline-flex items-center gap-1 text-canva-purple hover:underline"
+                            >
+                              <ExternalLink className="size-3" />
+                              Open
+                            </a>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                          <Stat
+                            label="Views"
+                            value={
+                              livePost.views != null
+                                ? formatFollowers(livePost.views)
+                                : "--"
+                            }
+                          />
+                          <Stat
+                            label="Likes"
+                            value={
+                              livePost.likes != null
+                                ? formatFollowers(livePost.likes)
+                                : "--"
+                            }
+                          />
+                          <Stat
+                            label="Comments"
+                            value={
+                              livePost.comments != null
+                                ? formatFollowers(livePost.comments)
+                                : "--"
+                            }
+                          />
+                          <Stat
+                            label="Engagement"
+                            value={
+                              livePost.engagement_rate != null
+                                ? `${(livePost.engagement_rate <= 1
+                                    ? livePost.engagement_rate * 100
+                                    : livePost.engagement_rate
+                                  ).toFixed(1)}%`
+                                : "--"
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <EmptyHint
+                      icon={<Sparkles className="size-4" />}
+                      text="Metrics will appear once the post is detected on the creator's feed."
+                    />
+                  )}
+                </Section>
+              )}
 
               {/* Content submission */}
               <Section title="Content submission">

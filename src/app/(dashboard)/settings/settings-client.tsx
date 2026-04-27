@@ -33,10 +33,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Brain,
   Building2,
-  Cpu,
-  FileText,
   Globe,
   Image as ImageIcon,
   KeyRound,
@@ -49,20 +46,15 @@ import {
   Settings2,
   ShieldCheck,
   ShoppingBag,
-  SlidersHorizontal,
-  Sparkles,
   Trash2,
   Upload,
   User,
-  Wrench,
   X,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { FallbackImg } from "@/components/ui/fallback-img";
-import { AutonomySettings } from "@/components/agent/autonomy-settings";
-import SkillsPage from "@/app/(dashboard)/agent/skills/page";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -499,15 +491,12 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
   /*  Render                                                           */
   /* ---------------------------------------------------------------- */
 
-  const [activeSection, setActiveSection] = useState("profile");
+  const [activeSection, setActiveSection] = useState("workspace");
 
   const NAV_ITEMS = [
-    { value: "profile", label: "Profile", icon: User },
-    { value: "preferences", label: "Preferences", icon: Settings2 },
+    { value: "workspace", label: "Workspace", icon: User },
     { value: "integrations", label: "Integrations", icon: Plug },
-    { value: "illaya", label: "Illaya", icon: Sparkles },
     { value: "brand-safety", label: "Brand Safety", icon: ShieldCheck },
-    { value: "account", label: "Account", icon: KeyRound },
   ] as const;
 
   return (
@@ -553,12 +542,12 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
       </div>
 
       {/* ── Content area ───────────────────────────────────────── */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 flex flex-col gap-6">
 
       {/* ============================================================= */}
-      {/*  Profile                                                        */}
+      {/*  Workspace (Profile + Preferences + Account)                    */}
       {/* ============================================================= */}
-      {activeSection === "profile" && (
+      {activeSection === "workspace" && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -685,9 +674,9 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
       )}
 
       {/* ============================================================= */}
-      {/*  Preferences                                                    */}
+      {/*  Preferences (within Workspace)                                 */}
       {/* ============================================================= */}
-      {activeSection === "preferences" && (
+      {activeSection === "workspace" && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -953,13 +942,6 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
       )}
 
       {/* ============================================================= */}
-      {/*  Illaya — AI Agent                                              */}
-      {/* ============================================================= */}
-      {activeSection === "illaya" && (
-        <AgentSettingsInline brand={brand} />
-      )}
-
-      {/* ============================================================= */}
       {/*  Brand Safety                                                   */}
       {/* ============================================================= */}
       {activeSection === "brand-safety" && (
@@ -1199,9 +1181,9 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
       )}
 
       {/* ============================================================= */}
-      {/*  Account                                                        */}
+      {/*  Account (within Workspace)                                     */}
       {/* ============================================================= */}
-      {activeSection === "account" && (
+      {activeSection === "workspace" && (
         <div className="flex flex-col gap-6">
           {/* Email */}
           <Card>
@@ -1366,454 +1348,111 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Illaya — AI Agent Settings (inline)                                */
-/* ------------------------------------------------------------------ */
-
-function AgentSettingsInline({ brand }: { brand: Brand | null }) {
-  const router = useRouter();
-  const [agentEnabled, setAgentEnabled] = useState(brand?.agent_enabled ?? false);
-  const [activeSubTab, setActiveSubTab] = useState<"config" | "skills">("config");
-
-  // Config state
-  const [configLoading, setConfigLoading] = useState(true);
-  const [configSaving, setConfigSaving] = useState(false);
-  const [configMessage, setConfigMessage] = useState<string | null>(null);
-  const [regenerating, setRegenerating] = useState<string | null>(null);
-  const [soulMd, setSoulMd] = useState("");
-  const [brandMd, setBrandMd] = useState("");
-  const [autonomyLevel, setAutonomyLevel] = useState("suggest_only");
-  const [actionAutonomy, setActionAutonomy] = useState<Record<string, string>>({});
-  const [budgetThreshold, setBudgetThreshold] = useState(25000);
-
-  useEffect(() => {
-    if (!agentEnabled) { setConfigLoading(false); return; }
-    async function loadConfig() {
-      try {
-        const res = await fetch("/api/agent/config");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.config) {
-            setSoulMd(data.config.soul_md || "");
-            setBrandMd(data.config.brand_md || "");
-            setAutonomyLevel(data.config.autonomy_level || "suggest_only");
-            if (data.config.action_autonomy) setActionAutonomy(data.config.action_autonomy);
-            if (data.config.budget_auto_threshold != null) setBudgetThreshold(data.config.budget_auto_threshold);
-          }
-        }
-      } catch {}
-      setConfigLoading(false);
-    }
-    loadConfig();
-  }, [agentEnabled]);
-
-  async function handleToggleAgent() {
-    const next = !agentEnabled;
-    setAgentEnabled(next);
-    if (next) {
-      const res = await fetch("/api/agent/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ autonomy_level: "suggest_only" }),
-      });
-      if (res.ok) router.refresh();
-    } else {
-      const sb = createClient();
-      await sb.from("brands").update({ agent_enabled: false } as never).eq("id", brand!.id);
-      router.refresh();
-    }
-  }
-
-  async function handleSaveConfig() {
-    setConfigSaving(true);
-    setConfigMessage(null);
-    try {
-      const res = await fetch("/api/agent/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          soul_md: soulMd,
-          autonomy_level: autonomyLevel,
-          action_autonomy: Object.keys(actionAutonomy).length > 0 ? actionAutonomy : undefined,
-          budget_auto_threshold: budgetThreshold,
-        }),
-      });
-      setConfigMessage(res.ok ? "Configuration saved successfully." : "Failed to save. Please try again.");
-      if (res.ok) router.refresh();
-    } catch {
-      setConfigMessage("Failed to save. Please try again.");
-    }
-    setConfigSaving(false);
-  }
-
-  async function handleRegenerate(type: "brand" | "soul") {
-    setRegenerating(type);
-    try {
-      const res = await fetch("/api/agent/generate-context", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (type === "brand") setBrandMd(data.brand_md || "");
-        if (type === "soul") setSoulMd(data.soul_md || "");
-      }
-    } catch {}
-    setRegenerating(null);
-  }
-
-  if (!brand) {
-    return (
-      <Card>
-        <CardContent className="py-8 text-center text-muted-foreground">
-          Complete your brand profile first to enable Illaya.
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-6">
-      {/* Enable / Disable */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Sparkles className="size-4 text-primary" />
-            Illaya — AI Marketing Agent
-          </CardTitle>
-          <CardDescription>
-            Enable Illaya, your conversational AI agent that can search creators,
-            draft outreach, benchmark rates, and give campaign recommendations.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between max-w-lg">
-            <div>
-              <p className="text-sm font-medium">
-                {agentEnabled ? "Illaya is active" : "Illaya is disabled"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {agentEnabled
-                  ? "Illaya is available in your sidebar and as an inline panel."
-                  : "Enable to start chatting with Illaya."}
-              </p>
-            </div>
-            <Switch checked={agentEnabled} onCheckedChange={handleToggleAgent} />
-          </div>
-        </CardContent>
-      </Card>
-
-      {agentEnabled && (
-        <>
-          {/* Sub-tab selector */}
-          <div className="flex gap-1 rounded-lg bg-muted p-1">
-            {([
-              { value: "config" as const, label: "Configuration", icon: SlidersHorizontal },
-              { value: "skills" as const, label: "Skills", icon: Wrench },
-            ]).map((tab) => {
-              const TabIcon = tab.icon;
-              return (
-                <button
-                  key={tab.value}
-                  type="button"
-                  onClick={() => setActiveSubTab(tab.value)}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                    activeSubTab === tab.value
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  <TabIcon className="size-3.5" />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Configuration sub-tab */}
-          {activeSubTab === "config" && (
-            <div className="flex flex-col gap-6">
-              {configLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <>
-                  {configMessage && (
-                    <p className={`text-sm ${configMessage.includes("success") ? "text-success" : "text-destructive"}`}>
-                      {configMessage}
-                    </p>
-                  )}
-
-                  {/* SOUL.md */}
-                  <Card>
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <CardTitle className="flex items-center gap-2 text-base">
-                            <FileText className="size-4 text-primary" />
-                            SOUL.md — Agent Personality
-                          </CardTitle>
-                          <CardDescription>
-                            Controls Illaya&apos;s voice, tone, behavior rules, and communication style.
-                          </CardDescription>
-                        </div>
-                        <Button variant="outline" size="sm" onClick={() => handleRegenerate("soul")} disabled={regenerating === "soul"}>
-                          <RefreshCw className={`size-3.5 ${regenerating === "soul" ? "animate-spin" : ""}`} />
-                          Reset to Default
-                        </Button>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <Textarea value={soulMd} onChange={(e) => setSoulMd(e.target.value)} rows={14} className="font-mono text-xs leading-relaxed" placeholder="Loading..." />
-                    </CardContent>
-                  </Card>
-
-                  {/* Soul Evolution */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <Brain className="size-4 text-violet-500" />
-                        Soul Evolution
-                      </CardTitle>
-                      <CardDescription>Illaya learns from interactions and evolves its personality rules over time.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-                        <div className="flex flex-col gap-1.5 rounded-lg border p-3">
-                          <p className="font-medium text-xs">Base Rules</p>
-                          <p className="text-[11px] text-muted-foreground">Your hand-written personality rules. Always preserved.</p>
-                        </div>
-                        <div className="flex flex-col gap-1.5 rounded-lg border p-3">
-                          <p className="font-medium text-xs">Learned Rules</p>
-                          <p className="text-[11px] text-muted-foreground">High-confidence knowledge becomes behavior rules.</p>
-                        </div>
-                        <div className="flex flex-col gap-1.5 rounded-lg border p-3">
-                          <p className="font-medium text-xs">Evolution Cycle</p>
-                          <p className="text-[11px] text-muted-foreground">Appends learned rules without changing your base.</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Autonomy */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Global Autonomy Level</CardTitle>
-                      <CardDescription>Set the overall autonomy mode. Per-action overrides below take precedence.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex flex-col gap-3 max-w-lg">
-                        <Select value={autonomyLevel} onValueChange={(val) => { if (val) setAutonomyLevel(val); }}>
-                          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="suggest_only">Suggest Only — Agent can only suggest, never act</SelectItem>
-                            <SelectItem value="draft_and_propose">Draft &amp; Propose — Agent drafts, you approve</SelectItem>
-                            <SelectItem value="auto_with_guardrails">Auto with Guardrails — Agent acts within limits</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <AutonomySettings
-                    actionAutonomy={actionAutonomy as Record<string, "AUTO" | "AUTO-DRAFT" | "APPROVAL-REQUIRED" | "ALWAYS-MANUAL">}
-                    budgetThreshold={budgetThreshold}
-                    onChange={(a, t) => { setActionAutonomy(a); setBudgetThreshold(t); }}
-                  />
-
-                  {/* Brand Context */}
-                  <Card>
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <CardTitle className="flex items-center gap-2 text-base">
-                            <Building2 className="size-4 text-primary" />
-                            BRAND.md — Brand Context
-                          </CardTitle>
-                          <CardDescription>Auto-generated from your brand profile. Illaya uses this to understand your brand.</CardDescription>
-                        </div>
-                        <Button variant="outline" size="sm" onClick={() => handleRegenerate("brand")} disabled={regenerating === "brand"}>
-                          <RefreshCw className={`size-3.5 ${regenerating === "brand" ? "animate-spin" : ""}`} />
-                          Regenerate
-                        </Button>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <Textarea value={brandMd} readOnly rows={10} className="font-mono text-xs leading-relaxed bg-muted" placeholder="Update your brand profile, then regenerate." />
-                    </CardContent>
-                  </Card>
-
-                  {/* Model info */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 text-base">
-                        <Cpu className="size-4 text-muted-foreground" />
-                        Model Configuration
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-2 gap-4 max-w-lg">
-                        <div className="flex flex-col gap-1.5">
-                          <Label className="text-xs text-muted-foreground">Model</Label>
-                          <Badge variant="outline">Claude Sonnet 4</Badge>
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                          <Label className="text-xs text-muted-foreground">Provider</Label>
-                          <Badge variant="outline">Anthropic</Badge>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Button onClick={handleSaveConfig} disabled={configSaving} className="w-fit">
-                    <Save className="size-3.5" />
-                    {configSaving ? "Saving..." : "Save Configuration"}
-                  </Button>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Skills sub-tab */}
-          {activeSubTab === "skills" && <SkillsPage />}
-        </>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Gmail Integration Card                                             */
+/*  Gmail integration card                                             */
 /* ------------------------------------------------------------------ */
 
 function GmailIntegrationCard({ brand }: { brand: Brand | null }) {
-  const [connecting, setConnecting] = useState(false);
-  const [disconnecting, setDisconnecting] = useState(false);
-  const [senderName, setSenderName] = useState(
-    (brand as Record<string, unknown>)?.email_sender_name as string || ""
+  const [connected, setConnected] = useState<boolean>(
+    Boolean(brand?.gmail_connected),
   );
-  const [savingSenderName, setSavingSenderName] = useState(false);
-  const supabase = createClient();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const gmailConnected = (brand as Record<string, unknown>)?.gmail_connected as boolean;
-  const gmailEmail = (brand as Record<string, unknown>)?.gmail_email as string | null;
+  useEffect(() => {
+    let cancelled = false;
+    async function loadStatus() {
+      try {
+        const res = await fetch("/api/integrations/gmail/status");
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled) setConnected(Boolean(json?.connected));
+      } catch {
+        // ignore
+      }
+    }
+    loadStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const handleConnect = async () => {
-    setConnecting(true);
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      if (e.data?.type === "gmail_connected") {
+        setConnected(true);
+        setBusy(false);
+      }
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  async function handleConnect() {
+    setError(null);
+    setBusy(true);
     try {
       const res = await fetch("/api/integrations/gmail/connect", {
         method: "POST",
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.redirect_url) {
-          window.location.href = data.redirect_url;
-          return;
-        }
-      }
-    } catch {
-      // Error handled
+      if (!res.ok) throw new Error("Failed to start Gmail connection");
+      const { url } = await res.json();
+      if (!url) throw new Error("Missing OAuth URL");
+      window.open(url, "gmail-oauth", "width=520,height=640");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Connection failed");
+      setBusy(false);
     }
-    setConnecting(false);
-  };
+  }
 
-  const handleDisconnect = async () => {
-    setDisconnecting(true);
-    const res = await fetch("/api/integrations/gmail/disconnect", {
-      method: "POST",
-    });
-    if (res.ok) {
-      window.location.reload();
+  async function handleDisconnect() {
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/integrations/gmail/disconnect", {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("Failed to disconnect Gmail");
+      setConnected(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Disconnect failed");
+    } finally {
+      setBusy(false);
     }
-    setDisconnecting(false);
-  };
-
-  const handleSaveSenderName = async () => {
-    if (!brand) return;
-    setSavingSenderName(true);
-    await supabase
-      .from("brands")
-      .update({ email_sender_name: senderName } as never)
-      .eq("id", brand.id);
-    setSavingSenderName(false);
-  };
-
-  if (gmailConnected) {
-    return (
-      <div className="flex flex-col gap-4 max-w-lg">
-        <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/5 p-4">
-          <div className="flex size-10 items-center justify-center rounded-full bg-success/10">
-            <Plug className="size-5 text-success" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium">Connected</p>
-            <p className="text-xs text-muted-foreground">
-              {gmailEmail || "Gmail connected"}
-            </p>
-          </div>
-          <Badge variant="secondary" className="text-success">
-            Active
-          </Badge>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label>Sender Name</Label>
-          <div className="flex gap-2">
-            <Input
-              value={senderName}
-              onChange={(e) => setSenderName(e.target.value)}
-              placeholder="Your name (appears in From field)"
-              className="flex-1"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSaveSenderName}
-              disabled={savingSenderName}
-            >
-              <Save className="size-3.5" />
-              Save
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            This name appears in the &quot;From&quot; field of your outreach emails.
-          </p>
-        </div>
-
-        <Separator />
-
-        <Button
-          variant="destructive"
-          className="w-fit"
-          onClick={handleDisconnect}
-          disabled={disconnecting}
-        >
-          Disconnect Gmail
-        </Button>
-      </div>
-    );
   }
 
   return (
-    <div className="flex flex-col gap-4 max-w-lg">
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 p-4">
-        <div className="flex size-10 items-center justify-center rounded-full bg-muted">
-          <Plug className="size-5 text-muted-foreground" />
-        </div>
-        <div className="flex-1">
-          <p className="text-sm font-medium">Not Connected</p>
-          <p className="text-xs text-muted-foreground">
-            Connect your Gmail to send outreach emails from your own address.
-          </p>
-        </div>
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2 text-sm">
+        <span
+          className={cn(
+            "inline-flex h-2 w-2 rounded-full",
+            connected ? "bg-success" : "bg-muted-foreground/50",
+          )}
+        />
+        <span className="font-medium">
+          {connected ? "Gmail connected" : "Not connected"}
+        </span>
       </div>
-
-      <Button className="w-fit" onClick={handleConnect} disabled={connecting}>
-        <Plug className="size-3.5" />
-        Connect Gmail
-      </Button>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <div className="flex gap-2">
+        {connected ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDisconnect}
+            disabled={busy}
+          >
+            {busy ? <Loader2 className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
+            Disconnect
+          </Button>
+        ) : (
+          <Button size="sm" onClick={handleConnect} disabled={busy}>
+            {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Plug className="size-3.5" />}
+            Connect Gmail
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
+

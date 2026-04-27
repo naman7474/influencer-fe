@@ -202,15 +202,6 @@ export function CampaignDetailClient({
         </div>
       </div>
 
-      {/* Analytics strip */}
-      <CampaignAnalyticsStrip
-        campaignId={campaign.id}
-        currency={campaign.currency ?? "INR"}
-        budget={campaign.total_budget ?? null}
-        funnel={funnel}
-        totalCreators={creators.length}
-      />
-
       {/* Hint strip */}
       <div className="flex items-center gap-2 rounded-2xl border border-canva-purple/20 bg-canva-purple-soft px-4 py-2.5 text-xs text-canva-purple">
         <span className="font-bold">Drag a card</span>
@@ -235,6 +226,15 @@ export function CampaignDetailClient({
         )}
       </div>
 
+      {/* Analytics strip */}
+      <CampaignAnalyticsStrip
+        campaignId={campaign.id}
+        currency={campaign.currency ?? "INR"}
+        budget={campaign.total_budget ?? null}
+        funnel={funnel}
+        totalCreators={creators.length}
+      />
+
       <CreatorPanel
         open={panelCc != null}
         onOpenChange={(o) => {
@@ -243,6 +243,7 @@ export function CampaignDetailClient({
         campaignId={campaign.id}
         campaignName={campaign.name}
         campaignCurrency={campaign.currency ?? "INR"}
+        brandId={campaign.brand_id}
         cc={panelCc}
         onUpdated={handleCcUpdate}
       />

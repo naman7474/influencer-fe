@@ -5,15 +5,17 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Search,
-  Users,
   ClipboardList,
   Settings,
   Send,
-  BarChart3,
   MessageSquare,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  SlidersHorizontal,
+  Brain,
+  Zap,
+  Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -37,16 +39,26 @@ interface NavItem {
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+  children?: NavItem[];
 }
 
 const navItems: NavItem[] = [
   { label: "Home", href: "/dashboard", icon: LayoutDashboard },
   { label: "Discover", href: "/discover", icon: Search },
-  { label: "Creators", href: "/creators", icon: Users },
   { label: "Campaigns", href: "/campaigns", icon: ClipboardList },
   { label: "Outreach", href: "/outreach", icon: Send },
-  { label: "Analytics", href: "/analytics", icon: BarChart3 },
-  { label: "Illaya", href: "/agent", icon: MessageSquare },
+  {
+    label: "Illaya",
+    href: "/agent",
+    icon: MessageSquare,
+    children: [
+      { label: "Chat", href: "/agent", icon: MessageSquare },
+      { label: "Config", href: "/agent/config", icon: SlidersHorizontal },
+      { label: "Memory", href: "/agent/memory", icon: Brain },
+      { label: "Automations", href: "/agent/automations", icon: Zap },
+      { label: "Skills", href: "/agent/skills", icon: Wrench },
+    ],
+  },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
@@ -64,6 +76,13 @@ export function Sidebar({ brand, expanded, onToggle }: SidebarProps) {
     if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/";
     if (href === "/agent") return pathname === "/agent";
     return pathname.startsWith(href);
+  };
+
+  const isGroupActive = (item: NavItem) => {
+    if (item.href === "/agent") {
+      return pathname === "/agent" || pathname.startsWith("/agent/");
+    }
+    return isActive(item.href);
   };
 
   const brandInitial = brand?.brand_name?.charAt(0)?.toUpperCase() || "K";
@@ -131,6 +150,7 @@ export function Sidebar({ brand, expanded, onToggle }: SidebarProps) {
       >
         {navItems.map((item) => {
           const active = isActive(item.href);
+          const groupActive = isGroupActive(item);
           const Icon = item.icon;
           const linkClass = cn(
             "flex items-center transition-all duration-150 rounded-xl",
@@ -142,26 +162,83 @@ export function Sidebar({ brand, expanded, onToggle }: SidebarProps) {
               : "text-[var(--db-txt3)] hover:text-[var(--db-txt2)] hover:bg-muted",
           );
 
+          const showChildren = !!item.children?.length && groupActive;
+
           if (expanded) {
             return (
-              <Link key={item.href} href={item.href} className={linkClass}>
-                <Icon className="size-[20px] shrink-0" />
-                <span className="truncate">{item.label}</span>
-              </Link>
+              <div key={item.href} className="flex flex-col gap-1">
+                <Link href={item.href} className={linkClass}>
+                  <Icon className="size-[20px] shrink-0" />
+                  <span className="truncate">{item.label}</span>
+                </Link>
+                {showChildren && item.children && (
+                  <div className="ml-3 flex flex-col gap-0.5 border-l border-sidebar-border pl-3">
+                    {item.children.map((child) => {
+                      const ChildIcon = child.icon;
+                      const childActive = pathname === child.href;
+                      return (
+                        <Link
+                          key={child.href}
+                          href={child.href}
+                          className={cn(
+                            "flex h-8 items-center gap-2 rounded-lg px-2 text-xs font-medium transition-colors",
+                            childActive
+                              ? "bg-[var(--db-clay-soft)] text-[var(--db-clay)]"
+                              : "text-[var(--db-txt3)] hover:text-[var(--db-txt2)] hover:bg-muted",
+                          )}
+                        >
+                          <ChildIcon className="size-3.5 shrink-0" />
+                          <span className="truncate">{child.label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           }
 
           return (
-            <Tooltip key={item.href}>
-              <TooltipTrigger render={<div />}>
-                <Link href={item.href} className={linkClass}>
-                  <Icon className="size-[20px]" />
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent side="right" sideOffset={8}>
-                {item.label}
-              </TooltipContent>
-            </Tooltip>
+            <div key={item.href} className="flex flex-col items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger render={<div />}>
+                  <Link href={item.href} className={linkClass}>
+                    <Icon className="size-[20px]" />
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8}>
+                  {item.label}
+                </TooltipContent>
+              </Tooltip>
+              {showChildren && item.children && (
+                <div className="flex flex-col items-center gap-0.5">
+                  {item.children.map((child) => {
+                    const ChildIcon = child.icon;
+                    const childActive = pathname === child.href;
+                    return (
+                      <Tooltip key={child.href}>
+                        <TooltipTrigger render={<div />}>
+                          <Link
+                            href={child.href}
+                            className={cn(
+                              "flex size-7 items-center justify-center rounded-lg transition-colors",
+                              childActive
+                                ? "bg-[var(--db-clay-soft)] text-[var(--db-clay)]"
+                                : "text-[var(--db-txt3)] hover:text-[var(--db-txt2)] hover:bg-muted",
+                            )}
+                          >
+                            <ChildIcon className="size-3.5" />
+                          </Link>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" sideOffset={8}>
+                          {child.label}
+                        </TooltipContent>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           );
         })}
       </nav>

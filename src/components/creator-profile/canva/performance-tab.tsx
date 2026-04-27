@@ -220,11 +220,20 @@ function BigSpark({
 }
 
 function buildAxisLabels(spanWeeks: number, last: number, format: (v: number) => string): string[] {
-  // Always show 4 ticks: oldest, two intermediates, "now". Snap to whole weeks.
+  // Show oldest, intermediates (deduped), "now". Snap to whole weeks.
   const oldest = `${spanWeeks - 1}w ago`;
-  const mid1 = `${Math.round(((spanWeeks - 1) * 2) / 3)}w`;
-  const mid2 = `${Math.round((spanWeeks - 1) / 3)}w`;
-  return [oldest, mid1, mid2, `now: ${format(last)}`];
+  const now = `now: ${format(last)}`;
+  const mid1Weeks = Math.round(((spanWeeks - 1) * 2) / 3);
+  const mid2Weeks = Math.round((spanWeeks - 1) / 3);
+  const mids: string[] = [];
+  const seen = new Set<number>();
+  for (const w of [mid1Weeks, mid2Weeks]) {
+    if (w <= 0 || w >= spanWeeks - 1) continue;
+    if (seen.has(w)) continue;
+    seen.add(w);
+    mids.push(`${w}w`);
+  }
+  return [oldest, ...mids, now];
 }
 
 function TrendCard({

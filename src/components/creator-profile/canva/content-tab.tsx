@@ -10,6 +10,7 @@ import { formatFollowers } from "@/lib/format";
 
 import { SectionCard } from "./section-card";
 import { EmptyCard } from "./empty-card";
+import { ContentViewerDialog } from "./content-viewer-dialog";
 
 interface ContentTabProps {
   caption: CaptionIntelligence | null;
@@ -273,12 +274,17 @@ function recentPostMeta(item: ContentItem): {
 function RecentPostsCard({
   content,
   platform,
+  onSelect,
 }: {
   content: ContentItem[];
   platform: SocialPlatform;
+  onSelect: (item: ContentItem) => void;
 }) {
-  const items = content.slice(0, 6);
-  if (!items.length) {
+  const [showAll, setShowAll] = React.useState(false);
+  const PAGE_SIZE = 24;
+  const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
+
+  if (!content.length) {
     return (
       <SectionCard
         title="Recent posts"
@@ -288,18 +294,40 @@ function RecentPostsCard({
       </SectionCard>
     );
   }
+
+  const items = showAll ? content.slice(0, visibleCount) : content.slice(0, 6);
+  const subtitle = showAll
+    ? `${items.length} of ${content.length}`
+    : `${items.length} most recent`;
+
   return (
     <SectionCard
       title="Recent posts"
-      subtitle={`${items.length} most recent`}
+      subtitle={subtitle}
+      right={
+        content.length > 6 ? (
+          <button
+            type="button"
+            onClick={() => {
+              setShowAll((v) => !v);
+              setVisibleCount(PAGE_SIZE);
+            }}
+            className="text-xs font-semibold text-canva-purple hover:underline"
+          >
+            {showAll ? "Show less" : "View all"}
+          </button>
+        ) : undefined
+      }
     >
       <div className="grid grid-cols-3 gap-2">
         {items.map((item, idx) => {
           const meta = recentPostMeta(item);
           return (
-            <div
-              key={item.kind === "ig_post" ? item.id : item.id}
-              className="overflow-hidden rounded-lg border border-border"
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onSelect(item)}
+              className="overflow-hidden rounded-lg border border-border text-left transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <div className="relative aspect-square">
                 {meta.thumbnail ? (
@@ -339,10 +367,19 @@ function RecentPostsCard({
                   </div>
                 )}
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
+      {showAll && visibleCount < content.length && (
+        <button
+          type="button"
+          onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+          className="mt-3 inline-flex w-full items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground hover:bg-muted"
+        >
+          Load more
+        </button>
+      )}
     </SectionCard>
   );
 }
@@ -355,12 +392,21 @@ export function ContentTab({
   platform,
   accent,
 }: ContentTabProps) {
+  const [viewerItem, setViewerItem] = React.useState<ContentItem | null>(null);
   return (
     <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
       <ContentPillarsCard caption={caption} />
       <CommentQualityCard audience={audience} />
       <VoiceCard caption={caption} transcript={transcript} accent={accent} />
-      <RecentPostsCard content={content} platform={platform} />
+      <RecentPostsCard
+        content={content}
+        platform={platform}
+        onSelect={setViewerItem}
+      />
+      <ContentViewerDialog
+        item={viewerItem}
+        onClose={() => setViewerItem(null)}
+      />
     </div>
   );
 }

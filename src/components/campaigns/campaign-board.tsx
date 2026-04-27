@@ -322,7 +322,7 @@ function BoardCard({ cc, dragging, onDragStart, onDragEnd, onClick, onGift }: Bo
             <span
               role="button"
               tabIndex={0}
-              aria-label="Send gift"
+              aria-label="Send barter order"
               onClick={(e) => {
                 e.stopPropagation();
                 onGift(cc);
