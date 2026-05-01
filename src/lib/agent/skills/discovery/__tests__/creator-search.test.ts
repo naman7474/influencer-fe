@@ -41,6 +41,36 @@ const execOpts = {
   abortSignal: undefined as never,
 };
 
+/**
+ * Brief shape returned by `creatorSearchTool` since migration 050.
+ * Replaces the old flat `{cpi_score, engagement_rate, match_score, …}`.
+ */
+interface BriefResult {
+  results: Array<{
+    id: string;
+    handle: string | null;
+    display_name: string | null;
+    platform: string | null;
+    avatar_url: string | null;
+    followers: number | null;
+    tier: string | null;
+    summary?: string;
+    why?: string;
+    scores?: {
+      cpi: number | null;
+      er: number | null;
+      hook_quality: number | null;
+      audience_authenticity: number | null;
+      brand_match: number | null;
+    };
+  }>;
+  count: number;
+  filters?: Record<string, unknown>;
+  total_in_database?: number;
+  message?: string;
+  error?: string;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Creator Search                                                     */
 /* ------------------------------------------------------------------ */
@@ -58,10 +88,10 @@ describe("creator-search", () => {
     } as unknown as SupabaseParam;
 
     const t = creatorSearchTool(brandId, supabase);
-    const result = (await t.execute(
+    const result = (await t.execute!(
       { query: "beauty", limit: 10 },
-      execOpts
-    )) as { results: unknown[]; count: number; error: string };
+      execOpts,
+    )) as BriefResult;
 
     expect(result.results).toHaveLength(0);
     expect(result.count).toBe(0);
@@ -76,34 +106,17 @@ describe("creator-search", () => {
     } as unknown as SupabaseParam;
 
     const t = creatorSearchTool(brandId, supabase);
-    const result = (await t.execute(
-      { query: "nonexistent_niche", limit: 10 },
-      execOpts
-    )) as { results: unknown[]; count: number; message: string };
+    const result = (await t.execute!(
+      { query: "nonexistent", limit: 10 },
+      execOpts,
+    )) as BriefResult;
 
     expect(result.results).toHaveLength(0);
     expect(result.count).toBe(0);
-    expect(result.message).toContain("No creators found");
-    expect(result.message).toContain("broadening your filters");
+    expect(result.message).toMatch(/No creators found/);
   });
 
-  it("returns null data as empty results", async () => {
-    const supabase = {
-      rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
-      from: vi.fn(() => mockQueryBuilder([])),
-    } as unknown as SupabaseParam;
-
-    const t = creatorSearchTool(brandId, supabase);
-    const result = (await t.execute(
-      { query: "test", limit: 10 },
-      execOpts
-    )) as { results: unknown[]; count: number; message: string };
-
-    expect(result.results).toHaveLength(0);
-    expect(result.count).toBe(0);
-  });
-
-  it("returns creators with brand match scores", async () => {
+  it("returns creators as briefs with scores object and brand match", async () => {
     const supabase = {
       rpc: vi.fn().mockResolvedValue({
         data: [
@@ -111,30 +124,50 @@ describe("creator-search", () => {
             id: "c1",
             handle: "@beauty_queen",
             display_name: "Beauty Queen",
+            avatar_url: "https://cdn/beauty.jpg",
             followers: 50000,
             tier: "mid",
             cpi: 75,
-            avg_engagement_rate: 4.5,
+            avg_engagement_rate: 0.045,
             primary_niche: "beauty",
             primary_spoken_language: "Hindi",
             city: "Mumbai",
             country: "India",
             is_verified: true,
+            platform: "instagram",
+            spoken_region: "North India",
+            avg_hook_quality: 0.82,
+            organic_brand_mentions: ["Lakme", "Maybelline"],
+            is_conversion_oriented: true,
+            dominant_cta_style: "link_in_bio",
+            upload_cadence_days: null,
+            audience_authenticity_score: 0.91,
+            audience_sentiment: "positive",
             total_count: 42,
           },
           {
             id: "c2",
             handle: "@glow_guru",
             display_name: "Glow Guru",
+            avatar_url: null,
             followers: 30000,
             tier: "micro",
             cpi: 68,
-            avg_engagement_rate: 3.8,
+            avg_engagement_rate: 0.038,
             primary_niche: "beauty",
             primary_spoken_language: "English",
             city: "Delhi",
             country: "India",
             is_verified: false,
+            platform: "instagram",
+            spoken_region: null,
+            avg_hook_quality: null,
+            organic_brand_mentions: null,
+            is_conversion_oriented: false,
+            dominant_cta_style: null,
+            upload_cadence_days: null,
+            audience_authenticity_score: null,
+            audience_sentiment: null,
             total_count: 42,
           },
         ],
@@ -145,9 +178,9 @@ describe("creator-search", () => {
           return mockQueryBuilder([
             {
               creator_id: "c1",
-              match_score: 88,
-              niche_fit_score: 90,
-              audience_geo_score: 85,
+              match_score: 0.88,
+              niche_fit_score: 0.9,
+              audience_geo_score: 0.85,
               match_reasoning: "Strong niche fit with high engagement",
             },
           ]);
@@ -157,70 +190,50 @@ describe("creator-search", () => {
     } as unknown as SupabaseParam;
 
     const t = creatorSearchTool(brandId, supabase);
-    const result = (await t.execute(
+    const result = (await t.execute!(
       { niche: "beauty", limit: 10 },
-      execOpts
-    )) as {
-      results: {
-        id: string;
-        handle: string;
-        display_name: string;
-        followers: number;
-        tier: string;
-        cpi_score: number;
-        engagement_rate: number;
-        niche: string;
-        language: string;
-        city: string;
-        country: string;
-        is_verified: boolean;
-        match_score: number | null;
-        match_reasoning: string | null;
-      }[];
-      count: number;
-      total_in_database: number;
-    };
+      execOpts,
+    )) as BriefResult;
 
     expect(result.count).toBe(2);
     expect(result.total_in_database).toBe(42);
 
-    // c1 has match score, should be first (sorted by match_score desc)
+    // c1 has the brand match → ranked first.
     expect(result.results[0].id).toBe("c1");
     expect(result.results[0].handle).toBe("@beauty_queen");
     expect(result.results[0].display_name).toBe("Beauty Queen");
+    expect(result.results[0].avatar_url).toBe("https://cdn/beauty.jpg");
     expect(result.results[0].followers).toBe(50000);
     expect(result.results[0].tier).toBe("mid");
-    expect(result.results[0].cpi_score).toBe(75);
-    expect(result.results[0].engagement_rate).toBe(4.5);
-    expect(result.results[0].niche).toBe("beauty");
-    expect(result.results[0].language).toBe("Hindi");
-    expect(result.results[0].city).toBe("Mumbai");
-    expect(result.results[0].country).toBe("India");
-    expect(result.results[0].is_verified).toBe(true);
-    expect(result.results[0].match_score).toBe(88);
-    expect(result.results[0].match_reasoning).toBe("Strong niche fit with high engagement");
+    expect(result.results[0].platform).toBe("instagram");
+    expect(result.results[0].scores?.cpi).toBe(75);
+    expect(result.results[0].scores?.er).toBe(0.045);
+    expect(result.results[0].scores?.hook_quality).toBe(0.82);
+    expect(result.results[0].scores?.brand_match).toBe(0.88);
+    // Templated summary should mention niche, language and brand mentions.
+    expect(result.results[0].summary).toMatch(/Beauty/);
+    expect(result.results[0].summary).toMatch(/Lakme/);
 
-    // c2 has no match score
+    // c2 has no brand match.
     expect(result.results[1].id).toBe("c2");
-    expect(result.results[1].match_score).toBeNull();
-    expect(result.results[1].match_reasoning).toBeNull();
+    expect(result.results[1].scores?.brand_match).toBeNull();
   });
 
-  it("sorts by match_score first, then cpi_score", async () => {
+  it("sorts by brand_match first, then cpi, then followers", async () => {
     const supabase = {
       rpc: vi.fn().mockResolvedValue({
         data: [
-          { id: "c1", handle: "@low_match", display_name: "Low", followers: 10000, tier: "micro", cpi: 90, avg_engagement_rate: 5.0, primary_niche: "beauty", primary_spoken_language: "Hindi", city: "Mumbai", country: "India", is_verified: false, total_count: 3 },
-          { id: "c2", handle: "@high_match", display_name: "High", followers: 20000, tier: "micro", cpi: 60, avg_engagement_rate: 3.0, primary_niche: "beauty", primary_spoken_language: "English", city: "Delhi", country: "India", is_verified: false, total_count: 3 },
-          { id: "c3", handle: "@no_match", display_name: "NoMatch", followers: 15000, tier: "micro", cpi: 80, avg_engagement_rate: 4.0, primary_niche: "beauty", primary_spoken_language: "Tamil", city: "Chennai", country: "India", is_verified: false, total_count: 3 },
+          { id: "c1", handle: "@low_match", display_name: "Low", followers: 10000, tier: "micro", cpi: 90, avg_engagement_rate: 0.05, primary_niche: "beauty", primary_spoken_language: "Hindi", city: "Mumbai", country: "India", is_verified: false, platform: "instagram", spoken_region: null, avg_hook_quality: null, organic_brand_mentions: null, is_conversion_oriented: false, dominant_cta_style: null, upload_cadence_days: null, audience_authenticity_score: null, audience_sentiment: null, total_count: 3 },
+          { id: "c2", handle: "@high_match", display_name: "High", followers: 20000, tier: "micro", cpi: 60, avg_engagement_rate: 0.03, primary_niche: "beauty", primary_spoken_language: "English", city: "Delhi", country: "India", is_verified: false, platform: "instagram", spoken_region: null, avg_hook_quality: null, organic_brand_mentions: null, is_conversion_oriented: false, dominant_cta_style: null, upload_cadence_days: null, audience_authenticity_score: null, audience_sentiment: null, total_count: 3 },
+          { id: "c3", handle: "@no_match", display_name: "NoMatch", followers: 15000, tier: "micro", cpi: 80, avg_engagement_rate: 0.04, primary_niche: "beauty", primary_spoken_language: "Tamil", city: "Chennai", country: "India", is_verified: false, platform: "instagram", spoken_region: null, avg_hook_quality: null, organic_brand_mentions: null, is_conversion_oriented: false, dominant_cta_style: null, upload_cadence_days: null, audience_authenticity_score: null, audience_sentiment: null, total_count: 3 },
         ],
         error: null,
       }),
       from: vi.fn((table: string) => {
         if (table === "creator_brand_matches") {
           return mockQueryBuilder([
-            { creator_id: "c1", match_score: 50, niche_fit_score: 60, audience_geo_score: 55, match_reasoning: "Low match" },
-            { creator_id: "c2", match_score: 95, niche_fit_score: 90, audience_geo_score: 88, match_reasoning: "High match" },
+            { creator_id: "c1", match_score: 0.5, niche_fit_score: 0.6, audience_geo_score: 0.55, match_reasoning: "Low" },
+            { creator_id: "c2", match_score: 0.95, niche_fit_score: 0.9, audience_geo_score: 0.88, match_reasoning: "High" },
           ]);
         }
         return mockQueryBuilder([]);
@@ -228,19 +241,15 @@ describe("creator-search", () => {
     } as unknown as SupabaseParam;
 
     const t = creatorSearchTool(brandId, supabase);
-    const result = (await t.execute({ limit: 10 }, execOpts)) as {
-      results: { id: string; match_score: number | null; cpi_score: number }[];
-    };
+    const result = (await t.execute!({ limit: 10 }, execOpts)) as BriefResult;
 
-    // c2 has match_score 95 → first
+    // c2 (match 0.95) → first, c3 (no match, cpi 80) → second, c1 (match 0.5) → third
     expect(result.results[0].id).toBe("c2");
-    // c3 has no match_score but cpi 80 → second
     expect(result.results[1].id).toBe("c3");
-    // c1 has match_score 50 → third
     expect(result.results[2].id).toBe("c1");
   });
 
-  it("passes correct parameters to RPC function", async () => {
+  it("forwards all 12 legacy + 11 new RPC params", async () => {
     const rpcSpy = vi.fn().mockResolvedValue({ data: [], error: null });
     const supabase = {
       rpc: rpcSpy,
@@ -248,7 +257,7 @@ describe("creator-search", () => {
     } as unknown as SupabaseParam;
 
     const t = creatorSearchTool(brandId, supabase);
-    await t.execute(
+    await t.execute!(
       {
         query: "fitness",
         niche: "health",
@@ -259,25 +268,53 @@ describe("creator-search", () => {
         country: "India",
         language: "Hindi",
         min_cpi: 60,
+        platform: "youtube" as const,
+        estimated_region: "North India",
+        audience_country: "India",
+        audience_language: "Hindi",
+        mentions_brand: "NCERT",
+        min_hook_quality: 0.7,
+        max_engagement_bait: 0.3,
+        min_authenticity_score: 0.8,
+        dominant_cta_style: "link_in_bio",
+        is_conversion_oriented: true,
+        min_upload_cadence_days: 1,
+        max_upload_cadence_days: 7,
+        min_avg_engagement_rate: 0.03,
         limit: 15,
       },
-      execOpts
+      execOpts,
     );
 
-    expect(rpcSpy).toHaveBeenCalledWith("fn_search_creators", {
-      p_query: "fitness",
-      p_niche: "health",
-      p_min_followers: 10000,
-      p_max_followers: 100000,
-      p_min_cpi: 60,
-      p_tier: "micro",
-      p_city: "Mumbai",
-      p_country: "India",
-      p_language: "Hindi",
-      p_limit: 15,
-      p_offset: 0,
-      p_platform: null,
-    });
+    expect(rpcSpy).toHaveBeenCalledWith(
+      "fn_search_creators",
+      expect.objectContaining({
+        p_query: "fitness",
+        p_niche: "health",
+        p_min_followers: 10000,
+        p_max_followers: 100000,
+        p_min_cpi: 60,
+        p_tier: "micro",
+        p_city: "Mumbai",
+        p_country: "India",
+        p_language: "Hindi",
+        p_platform: "youtube",
+        p_limit: 15,
+        p_offset: 0,
+        p_estimated_region: "North India",
+        p_audience_country: "India",
+        p_audience_language: "Hindi",
+        p_mentions_brand: "NCERT",
+        p_min_hook_quality: 0.7,
+        p_max_engagement_bait: 0.3,
+        p_min_authenticity_score: 0.8,
+        p_dominant_cta_style: "link_in_bio",
+        p_is_conversion_oriented: true,
+        p_min_upload_cadence_days: 1,
+        p_max_upload_cadence_days: 7,
+        p_min_avg_engagement_rate: 0.03,
+      }),
+    );
   });
 
   it("caps limit at 25", async () => {
@@ -288,11 +325,11 @@ describe("creator-search", () => {
     } as unknown as SupabaseParam;
 
     const t = creatorSearchTool(brandId, supabase);
-    await t.execute({ limit: 100 }, execOpts);
+    await t.execute!({ limit: 100 }, execOpts);
 
     expect(rpcSpy).toHaveBeenCalledWith(
       "fn_search_creators",
-      expect.objectContaining({ p_limit: 25 })
+      expect.objectContaining({ p_limit: 25 }),
     );
   });
 
@@ -304,11 +341,11 @@ describe("creator-search", () => {
     } as unknown as SupabaseParam;
 
     const t = creatorSearchTool(brandId, supabase);
-    await t.execute({ limit: 10 }, execOpts);
+    await t.execute!({ limit: 10 }, execOpts);
 
     expect(rpcSpy).toHaveBeenCalledWith(
       "fn_search_creators",
-      expect.objectContaining({ p_limit: 10 })
+      expect.objectContaining({ p_limit: 10 }),
     );
   });
 
@@ -320,7 +357,7 @@ describe("creator-search", () => {
     } as unknown as SupabaseParam;
 
     const t = creatorSearchTool(brandId, supabase);
-    await t.execute({ limit: 10 }, execOpts);
+    await t.execute!({ limit: 10 }, execOpts);
 
     expect(rpcSpy).toHaveBeenCalledWith(
       "fn_search_creators",
@@ -334,7 +371,10 @@ describe("creator-search", () => {
         p_city: null,
         p_country: null,
         p_language: null,
-      })
+        p_estimated_region: null,
+        p_mentions_brand: null,
+        p_is_conversion_oriented: null,
+      }),
     );
   });
 
@@ -342,7 +382,7 @@ describe("creator-search", () => {
     const supabase = {
       rpc: vi.fn().mockResolvedValue({
         data: [
-          { id: "c1", handle: "@test", display_name: "Test", followers: 10000, tier: "micro", cpi: 70, avg_engagement_rate: 3.0, primary_niche: "beauty", primary_spoken_language: "Hindi", city: "Mumbai", country: "India", is_verified: false, total_count: 157 },
+          { id: "c1", handle: "@test", display_name: "Test", followers: 10000, tier: "micro", cpi: 70, avg_engagement_rate: 0.03, primary_niche: "beauty", primary_spoken_language: "Hindi", city: "Mumbai", country: "India", is_verified: false, platform: "instagram", spoken_region: null, avg_hook_quality: null, organic_brand_mentions: null, is_conversion_oriented: false, dominant_cta_style: null, upload_cadence_days: null, audience_authenticity_score: null, audience_sentiment: null, total_count: 157 },
         ],
         error: null,
       }),
@@ -350,20 +390,17 @@ describe("creator-search", () => {
     } as unknown as SupabaseParam;
 
     const t = creatorSearchTool(brandId, supabase);
-    const result = (await t.execute({ limit: 10 }, execOpts)) as {
-      total_in_database: number;
-      count: number;
-    };
+    const result = (await t.execute!({ limit: 10 }, execOpts)) as BriefResult;
 
     expect(result.total_in_database).toBe(157);
     expect(result.count).toBe(1);
   });
 
-  it("handles creators without brand matches (all null)", async () => {
+  it("brand_match is null when there's no creator_brand_matches row", async () => {
     const supabase = {
       rpc: vi.fn().mockResolvedValue({
         data: [
-          { id: "c1", handle: "@solo", display_name: "Solo", followers: 5000, tier: "nano", cpi: 50, avg_engagement_rate: 2.0, primary_niche: "food", primary_spoken_language: "Tamil", city: "Chennai", country: "India", is_verified: false, total_count: 1 },
+          { id: "c1", handle: "@solo", display_name: "Solo", followers: 5000, tier: "nano", cpi: 50, avg_engagement_rate: 0.02, primary_niche: "food", primary_spoken_language: "Tamil", city: "Chennai", country: "India", is_verified: false, platform: "instagram", spoken_region: null, avg_hook_quality: null, organic_brand_mentions: null, is_conversion_oriented: false, dominant_cta_style: null, upload_cadence_days: null, audience_authenticity_score: null, audience_sentiment: null, total_count: 1 },
         ],
         error: null,
       }),
@@ -371,11 +408,86 @@ describe("creator-search", () => {
     } as unknown as SupabaseParam;
 
     const t = creatorSearchTool(brandId, supabase);
-    const result = (await t.execute({ limit: 10 }, execOpts)) as {
-      results: { match_score: null; match_reasoning: null }[];
-    };
+    const result = (await t.execute!({ limit: 10 }, execOpts)) as BriefResult;
 
-    expect(result.results[0].match_score).toBeNull();
-    expect(result.results[0].match_reasoning).toBeNull();
+    expect(result.results[0].scores?.brand_match).toBeNull();
+  });
+
+  it("includes filter recap when filters are set", async () => {
+    const supabase = {
+      rpc: vi.fn().mockResolvedValue({
+        data: [
+          { id: "c1", handle: "@x", display_name: "X", followers: 1000, tier: "nano", cpi: 50, avg_engagement_rate: 0.02, primary_niche: "x", primary_spoken_language: "Hindi", city: null, country: null, is_verified: false, platform: "instagram", spoken_region: "North India", avg_hook_quality: 0.8, organic_brand_mentions: null, is_conversion_oriented: false, dominant_cta_style: null, upload_cadence_days: null, audience_authenticity_score: null, audience_sentiment: null, total_count: 1 },
+        ],
+        error: null,
+      }),
+      from: vi.fn(() => mockQueryBuilder([])),
+    } as unknown as SupabaseParam;
+
+    const t = creatorSearchTool(brandId, supabase);
+    const result = (await t.execute!(
+      {
+        estimated_region: "North India",
+        min_hook_quality: 0.7,
+        limit: 10,
+      },
+      execOpts,
+    )) as BriefResult;
+
+    expect(result.filters).toMatchObject({
+      region: "North India",
+      min_hook_quality: 0.7,
+    });
+  });
+
+  it("computes 'why' from active filters that the creator satisfied", async () => {
+    const supabase = {
+      rpc: vi.fn().mockResolvedValue({
+        data: [
+          {
+            id: "c1",
+            handle: "@m",
+            display_name: "M",
+            followers: 100000,
+            tier: "mid",
+            cpi: 70,
+            avg_engagement_rate: 0.04,
+            primary_niche: "education",
+            primary_spoken_language: "Hindi",
+            city: null,
+            country: "India",
+            is_verified: false,
+            platform: "youtube",
+            spoken_region: "North India",
+            avg_hook_quality: 0.86,
+            organic_brand_mentions: ["NCERT", "CBSE"],
+            is_conversion_oriented: false,
+            dominant_cta_style: null,
+            upload_cadence_days: 0.6,
+            audience_authenticity_score: null,
+            audience_sentiment: null,
+            total_count: 1,
+          },
+        ],
+        error: null,
+      }),
+      from: vi.fn(() => mockQueryBuilder([])),
+    } as unknown as SupabaseParam;
+
+    const t = creatorSearchTool(brandId, supabase);
+    const result = (await t.execute!(
+      {
+        mentions_brand: "NCERT",
+        estimated_region: "North India",
+        min_hook_quality: 0.7,
+        limit: 10,
+      },
+      execOpts,
+    )) as BriefResult;
+
+    const why = result.results[0].why ?? "";
+    expect(why).toMatch(/NCERT/);
+    expect(why).toMatch(/North India/);
+    expect(why).toMatch(/hook/);
   });
 });

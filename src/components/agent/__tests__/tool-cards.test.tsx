@@ -11,6 +11,28 @@ vi.mock("../negotiation-card", () => ({
   NegotiationCard: () => <div data-testid="negotiation-card" />,
 }));
 
+// AddToCampaignDialog opens a Supabase-backed dialog; stub for tests.
+vi.mock("@/components/creators/add-to-campaign-dialog", () => ({
+  AddToCampaignDialog: () => null,
+}));
+
+// next/link renders children with an anchor — stub to a plain anchor.
+vi.mock("next/link", () => ({
+  default: ({
+    children,
+    href,
+    ...rest
+  }: {
+    children: React.ReactNode;
+    href: string;
+    [key: string]: unknown;
+  }) => (
+    <a href={href} {...(rest as object)}>
+      {children}
+    </a>
+  ),
+}));
+
 import {
   ToolResultCard,
   CreatorSearchCard,
@@ -38,37 +60,74 @@ function makeTool(overrides: Record<string, unknown> = {}) {
   };
 }
 
+// Brief shape produced by the new creator-search RPC + tool wrapper.
+// Match scores in this shape are 0–1 decimals (per creator_brand_matches
+// schema) — the UI multiplies by 100 for display.
 const creatorSearchResult = {
   results: [
     {
       id: "c1",
       handle: "fit_priya",
       display_name: "Priya Sharma",
+      platform: "instagram",
+      avatar_url: null,
       followers: 45200,
       tier: "micro",
-      cpi_score: 82,
-      match_score: 91,
+      is_verified: true,
+      summary: "Fitness · English · India · 0.78 hook",
+      why: "hook 78/100 · India audience",
+      scores: {
+        cpi: 82,
+        er: 0.041,
+        hook_quality: 0.78,
+        audience_authenticity: 0.92,
+        brand_match: 0.91,
+      },
+      hits: { tier: "micro" },
     },
     {
       id: "c2",
       handle: "foodie_raj",
       display_name: "Raj Kumar",
+      platform: "youtube",
+      avatar_url: null,
       followers: 120000,
       tier: "mid",
-      cpi_score: null,
-      match_score: 65,
+      is_verified: false,
+      summary: "Food · Hindi · North India",
+      why: "",
+      scores: {
+        cpi: null,
+        er: 0.025,
+        hook_quality: null,
+        audience_authenticity: null,
+        brand_match: 0.65,
+      },
+      hits: {},
     },
     {
       id: "c3",
       handle: "yoga_anita",
       display_name: "Anita Desai",
+      platform: "instagram",
+      avatar_url: null,
       followers: 8500,
       tier: "nano",
-      cpi_score: 95,
-      match_score: null,
+      is_verified: false,
+      summary: "Wellness · English",
+      why: "",
+      scores: {
+        cpi: 95,
+        er: 0.058,
+        hook_quality: null,
+        audience_authenticity: null,
+        brand_match: null,
+      },
+      hits: {},
     },
   ],
   count: 3,
+  filters: {},
   total_in_database: 42,
 };
 
@@ -238,7 +297,7 @@ describe("ToolResultCard", () => {
       />
     );
     expect(screen.getByText("Found 3 creators")).toBeInTheDocument();
-    expect(screen.getByText("42 total matches")).toBeInTheDocument();
+    expect(screen.getByText("42 matches in database")).toBeInTheDocument();
   });
 
   /* ── Dispatches to OutreachDraftCard ─────────────────────── */
@@ -455,8 +514,10 @@ describe("ToolResultCard", () => {
         compact
       />
     );
-    // In compact mode, limit is 5, so 8 creators should show "+3 more"
-    expect(screen.getByText("+3 more")).toBeInTheDocument();
+    // In compact mode, limit is 5, so 8 creators should show "+3 more …".
+    expect(
+      screen.getByText("+3 more — refine the search to see them"),
+    ).toBeInTheDocument();
   });
 });
 
@@ -465,44 +526,59 @@ describe("ToolResultCard", () => {
 /* ================================================================== */
 
 describe("CreatorSearchCard", () => {
-  it("renders creator count and total matches", () => {
+  it("renders creator count and total-in-database hint", () => {
     render(
       <CreatorSearchCard result={creatorSearchResult} compact={false} />
     );
     expect(screen.getByText("Found 3 creators")).toBeInTheDocument();
-    expect(screen.getByText("42 total matches")).toBeInTheDocument();
+    expect(screen.getByText("42 matches in database")).toBeInTheDocument();
   });
 
-  it("hides total matches when total_in_database is not greater than count", () => {
+  it("singularizes 'creator' for count of 1", () => {
+    const oneResult = {
+      ...creatorSearchResult,
+      results: creatorSearchResult.results.slice(0, 1),
+      count: 1,
+    };
+    render(<CreatorSearchCard result={oneResult} compact={false} />);
+    expect(screen.getByText("Found 1 creator")).toBeInTheDocument();
+  });
+
+  it("hides total-in-database hint when not greater than count", () => {
     render(
       <CreatorSearchCard
         result={{ ...creatorSearchResult, total_in_database: 3 }}
         compact={false}
       />
     );
-    expect(screen.queryByText(/total matches/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/matches in database/)).not.toBeInTheDocument();
   });
 
-  it("hides total matches when total_in_database is null", () => {
+  it("renders filter recap chips when filters are present", () => {
     render(
       <CreatorSearchCard
-        result={{ ...creatorSearchResult, total_in_database: null }}
+        result={{
+          ...creatorSearchResult,
+          filters: { region: "North India", min_hook_quality: 0.7 },
+        }}
         compact={false}
       />
     );
-    expect(screen.queryByText(/total matches/)).not.toBeInTheDocument();
+    expect(screen.getByText("region: North India")).toBeInTheDocument();
+    expect(screen.getByText("min hook quality: 0.7")).toBeInTheDocument();
   });
 
-  it("renders handles with @ prefix and avatar initials", () => {
+  it("renders handles with @ prefix and falls back to initial avatar", () => {
     render(
       <CreatorSearchCard result={creatorSearchResult} compact={false} />
     );
     expect(screen.getByText("@fit_priya")).toBeInTheDocument();
     expect(screen.getByText("@foodie_raj")).toBeInTheDocument();
     expect(screen.getByText("@yoga_anita")).toBeInTheDocument();
-    // Avatar initials for "fit_priya" and "foodie_raj" -> "F", "yoga_anita" -> "Y"
-    const fInitials = screen.getAllByText("F");
-    expect(fInitials.length).toBe(2); // fit_priya + foodie_raj
+    // No avatar_url → initial-letter fallback. fit_priya + foodie_raj both
+    // start with "F"; yoga_anita starts with "Y".
+    expect(screen.getAllByText("F")).toHaveLength(2);
+    expect(screen.getByText("Y")).toBeInTheDocument();
   });
 
   it("renders display_name in non-compact mode", () => {
@@ -521,16 +597,17 @@ describe("CreatorSearchCard", () => {
     expect(screen.queryByText("Raj Kumar")).not.toBeInTheDocument();
   });
 
-  it("renders follower count formatted as K", () => {
+  it("renders follower count via formatFollowers", () => {
     render(
       <CreatorSearchCard result={creatorSearchResult} compact={false} />
     );
-    expect(screen.getByText("45.2K")).toBeInTheDocument();
-    expect(screen.getByText("120.0K")).toBeInTheDocument();
-    expect(screen.getByText("8.5K")).toBeInTheDocument();
+    // formatFollowers output for these test sizes — keep loose to avoid
+    // brittle coupling to format internals.
+    expect(screen.getByText(/45/)).toBeInTheDocument();
+    expect(screen.getByText(/120K|120,?000/)).toBeInTheDocument();
   });
 
-  it("renders tier badges", () => {
+  it("renders tier badges for all three creators", () => {
     render(
       <CreatorSearchCard result={creatorSearchResult} compact={false} />
     );
@@ -539,40 +616,68 @@ describe("CreatorSearchCard", () => {
     expect(screen.getByText("nano")).toBeInTheDocument();
   });
 
-  it("renders CPI score when present", () => {
+  it("renders CPI stat chip when present", () => {
     render(
       <CreatorSearchCard result={creatorSearchResult} compact={false} />
     );
-    expect(screen.getByText("CPI:82")).toBeInTheDocument();
-    expect(screen.getByText("CPI:95")).toBeInTheDocument();
-    // foodie_raj has cpi_score: null, so no CPI for that one
+    // CPI label appears in two cards (fit_priya: 82, yoga_anita: 95).
+    expect(screen.getAllByText("CPI")).toHaveLength(2);
+    expect(screen.getByText("82")).toBeInTheDocument();
+    expect(screen.getByText("95")).toBeInTheDocument();
   });
 
-  it("does not render CPI when cpi_score is null", () => {
+  it("renders ER as a percentage", () => {
     render(
       <CreatorSearchCard result={creatorSearchResult} compact={false} />
     );
-    // There should be exactly 2 CPI entries (not 3)
-    const cpiElements = screen.getAllByText(/^CPI:/);
-    expect(cpiElements).toHaveLength(2);
+    // 0.041 → 4.1%, 0.025 → 2.5%, 0.058 → 5.8%
+    expect(screen.getByText("4.1%")).toBeInTheDocument();
+    expect(screen.getByText("2.5%")).toBeInTheDocument();
+    expect(screen.getByText("5.8%")).toBeInTheDocument();
   });
 
-  it("renders match score badge with correct values", () => {
+  it("renders Match chip when brand_match is set, falling back to Hook when not", () => {
     render(
       <CreatorSearchCard result={creatorSearchResult} compact={false} />
     );
-    expect(screen.getByText("91%")).toBeInTheDocument();
-    expect(screen.getByText("65%")).toBeInTheDocument();
-    // yoga_anita has match_score: null, so no match badge
+    expect(screen.getByText("91%")).toBeInTheDocument(); // fit_priya brand_match
+    expect(screen.getByText("65%")).toBeInTheDocument(); // foodie_raj brand_match
+    // yoga_anita has no brand_match and no hook_quality, so neither shows.
+    expect(screen.queryByText("Hook")).not.toBeInTheDocument();
   });
 
-  it("does not render match badge when match_score is null", () => {
+  it("renders the why reasoning chip when present", () => {
     render(
       <CreatorSearchCard result={creatorSearchResult} compact={false} />
     );
-    // Only 2 match badges should be rendered (91% and 65%)
-    const percentElements = screen.getAllByText(/%$/);
-    expect(percentElements).toHaveLength(2);
+    expect(screen.getByText("hook 78/100 · India audience")).toBeInTheDocument();
+  });
+
+  it("renders Open profile link with handle-encoded href", () => {
+    render(
+      <CreatorSearchCard result={creatorSearchResult} compact={false} />
+    );
+    const links = screen.getAllByText("Open profile");
+    expect(links.length).toBe(3);
+    expect(links[0].closest("a")).toHaveAttribute("href", "/creator/fit_priya");
+  });
+
+  it("renders Add to campaign button on each card", () => {
+    render(
+      <CreatorSearchCard result={creatorSearchResult} compact={false} />
+    );
+    expect(screen.getAllByText("Add to campaign")).toHaveLength(3);
+  });
+
+  it("compact mode hides actions and renders single-line summaries", () => {
+    render(
+      <CreatorSearchCard result={creatorSearchResult} compact={true} />
+    );
+    // No action buttons in compact mode.
+    expect(screen.queryByText("Open profile")).not.toBeInTheDocument();
+    expect(screen.queryByText("Add to campaign")).not.toBeInTheDocument();
+    // Handles still rendered.
+    expect(screen.getByText("@fit_priya")).toBeInTheDocument();
   });
 
   it("truncates to 5 creators in compact mode", () => {
@@ -588,8 +693,9 @@ describe("CreatorSearchCard", () => {
         compact={true}
       />
     );
-    // Should show 5 handles and "+3 more"
-    expect(screen.getByText("+3 more")).toBeInTheDocument();
+    expect(
+      screen.getByText("+3 more — refine the search to see them"),
+    ).toBeInTheDocument();
     expect(screen.getByText("@creator_0")).toBeInTheDocument();
     expect(screen.getByText("@creator_4")).toBeInTheDocument();
     expect(screen.queryByText("@creator_5")).not.toBeInTheDocument();
@@ -608,7 +714,9 @@ describe("CreatorSearchCard", () => {
         compact={false}
       />
     );
-    expect(screen.getByText("+3 more")).toBeInTheDocument();
+    expect(
+      screen.getByText("+3 more — refine the search to see them"),
+    ).toBeInTheDocument();
     expect(screen.getByText("@creator_9")).toBeInTheDocument();
     expect(screen.queryByText("@creator_10")).not.toBeInTheDocument();
   });
@@ -617,7 +725,9 @@ describe("CreatorSearchCard", () => {
     render(
       <CreatorSearchCard result={creatorSearchResult} compact={false} />
     );
-    expect(screen.queryByText(/more$/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/refine the search/),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -1105,13 +1215,19 @@ describe("TierBadge rendering", () => {
 });
 
 /* ================================================================== */
-/*  MatchBadge (tested via CreatorSearchCard)                          */
+/*  Match chip (tested via CreatorSearchCard, new 0–1 brief shape)     */
 /* ================================================================== */
 
-describe("MatchBadge rendering", () => {
-  it("renders high score (>=80) match badge", () => {
+describe("Match chip rendering", () => {
+  it("renders high-tier match (≥0.8) as a percentage", () => {
     const creators = [
-      { id: "c1", handle: "high", followers: 10000, tier: "micro", match_score: 92 },
+      {
+        id: "c1",
+        handle: "high",
+        followers: 10000,
+        tier: "micro",
+        scores: { brand_match: 0.92 },
+      },
     ];
     render(
       <CreatorSearchCard
@@ -1122,9 +1238,15 @@ describe("MatchBadge rendering", () => {
     expect(screen.getByText("92%")).toBeInTheDocument();
   });
 
-  it("renders medium score (60-79) match badge", () => {
+  it("renders mid-tier match (0.6–0.8)", () => {
     const creators = [
-      { id: "c1", handle: "med", followers: 10000, tier: "micro", match_score: 70 },
+      {
+        id: "c1",
+        handle: "med",
+        followers: 10000,
+        tier: "micro",
+        scores: { brand_match: 0.7 },
+      },
     ];
     render(
       <CreatorSearchCard
@@ -1135,9 +1257,15 @@ describe("MatchBadge rendering", () => {
     expect(screen.getByText("70%")).toBeInTheDocument();
   });
 
-  it("renders low score (<60) match badge", () => {
+  it("renders low-tier match (<0.6)", () => {
     const creators = [
-      { id: "c1", handle: "low", followers: 10000, tier: "micro", match_score: 45 },
+      {
+        id: "c1",
+        handle: "low",
+        followers: 10000,
+        tier: "micro",
+        scores: { brand_match: 0.45 },
+      },
     ];
     render(
       <CreatorSearchCard

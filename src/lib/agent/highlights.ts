@@ -37,6 +37,7 @@ export interface Highlight {
 const TOOL_KIND: Record<string, HighlightKind> = {
   // Discovery → creators_found
   creator_search: "creators_found",
+  creator_semantic_search: "creators_found",
   lookalike_finder: "creators_found",
   warm_lead_detector: "creators_found",
   competitor_mapper: "creators_found",
@@ -130,6 +131,7 @@ function buildLabels(
       const total = asNum(out.total_in_database);
       const toolLabel: Record<string, string> = {
         creator_search: "creators",
+        creator_semantic_search: "creators",
         lookalike_finder: "similar creators",
         warm_lead_detector: "warm leads",
         competitor_mapper: "competitor creators",
@@ -305,6 +307,17 @@ export function extractHighlights(messages: UIMessage[]): Highlight[] {
       const kind: HighlightKind = isPendingApproval
         ? "approval_pending"
         : TOOL_KIND[toolName] ?? "generic";
+
+      // Drop empty intermediate creator-search pills. When the agent runs
+      // creator_search / creator_semantic_search and the result is empty,
+      // the pill ("Found 0 creators · Creator list") is noise — the agent's
+      // text response already explains the gap and chains a refined call.
+      // Skipping these keeps the chat focused on tool calls that actually
+      // returned something.
+      if (kind === "creators_found") {
+        const count = asNum(raw.count) ?? asArr(raw.results)?.length ?? 0;
+        if (count === 0) continue;
+      }
 
       const { title, subtitle } = buildLabels(kind, toolName, raw);
 

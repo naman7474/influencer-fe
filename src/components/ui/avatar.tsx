@@ -29,6 +29,13 @@ function AvatarImage({ className, ...props }: AvatarPrimitive.Image.Props) {
   return (
     <AvatarPrimitive.Image
       data-slot="avatar-image"
+      // Default to native lazy loading + async decode. The Discover page
+      // shows ≥20 cards per scroll and a heavy infinite-scroll list at 1M
+      // creators would otherwise fire all avatar requests immediately.
+      // Callers that need eager loading (e.g. above-the-fold hero) can
+      // still override via {...props}.
+      loading="lazy"
+      decoding="async"
       className={cn(
         "aspect-square size-full rounded-full object-cover",
         className

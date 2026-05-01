@@ -10,6 +10,12 @@ export interface PlatformPivotItem {
   platform: SocialPlatform;
   followers: number | null;
   available: boolean;
+  // profileUrl + handle are not consumed here today — the visible profile
+  // chip lives in the creator header. Kept on the type so the parent's
+  // shared URL-construction logic continues to work and we have a hook
+  // here if we ever want a per-tab CTA again.
+  profileUrl?: string | null;
+  handle?: string | null;
 }
 
 interface PlatformPivotProps {

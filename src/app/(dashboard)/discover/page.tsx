@@ -7,7 +7,6 @@ import { Loader2, SearchX } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import {
-  searchCreators,
   DEFAULT_FILTERS,
   type DiscoveryFilters,
   type SortOption,
@@ -32,6 +31,36 @@ const PAGE_SIZE = 20;
 type LeaderboardWithPlatform = CreatorLeaderboard & {
   platform?: "instagram" | "youtube" | null;
 };
+
+interface DiscoverSearchResponse {
+  data: LeaderboardWithPlatform[];
+  count: number;
+  mode?: "filters_only" | "filters_only_fallback" | "hybrid";
+  warning?: string;
+}
+
+/**
+ * Calls the /api/discover/search route. Single source of truth for
+ * Discover's data fetching — handles both filters-only and hybrid
+ * (BM25 + vector) paths server-side. Embedding generation lives on the
+ * server so the OpenAI key never touches the browser.
+ */
+async function fetchDiscoverPage(
+  filters: DiscoveryFilters,
+  sort: SortOption,
+  page: number,
+): Promise<DiscoverSearchResponse> {
+  const res = await fetch("/api/discover/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filters, sort, page, pageSize: PAGE_SIZE }),
+  });
+  if (!res.ok) {
+    console.error("[discover] search failed:", res.status, await res.text());
+    return { data: [], count: 0 };
+  }
+  return (await res.json()) as DiscoverSearchResponse;
+}
 
 function toCardCreator(row: LeaderboardWithPlatform): CreatorCardCreator {
   return {
@@ -65,7 +94,7 @@ export default function DiscoverPage() {
   const [sort, setSort] = useState<SortOption>("cpi");
   const [creators, setCreators] = useState<LeaderboardWithPlatform[]>([]);
   const [extras, setExtras] = useState<Map<string, CreatorExtras>>(new Map());
-  const [totalCount, setTotalCount] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -88,6 +117,8 @@ export default function DiscoverPage() {
     [supabase],
   );
 
+  const [warning, setWarning] = useState<string | null>(null);
+
   const fetchCreators = useCallback(async () => {
     setLoading(true);
     setPage(0);
@@ -97,20 +128,13 @@ export default function DiscoverPage() {
       search: debouncedSearch,
     };
 
-    const result = await searchCreators(
-      supabase,
-      filtersWithDebouncedSearch,
-      sort,
-      0,
-      PAGE_SIZE,
-    );
-
-    const rows = result.data as LeaderboardWithPlatform[];
-    setCreators(rows);
-    setTotalCount(result.count);
+    const result = await fetchDiscoverPage(filtersWithDebouncedSearch, sort, 0);
+    setCreators(result.data);
+    setHasMore(result.data.length >= PAGE_SIZE);
+    setWarning(result.warning ?? null);
     setLoading(false);
-    setExtras(await enrich(rows));
-  }, [supabase, filters, debouncedSearch, sort, enrich]);
+    setExtras(await enrich(result.data));
+  }, [filters, debouncedSearch, sort, enrich]);
 
   useEffect(() => {
     fetchCreators();
@@ -130,6 +154,14 @@ export default function DiscoverPage() {
     filters.verifiedOnly,
     filters.hasContact,
     filters.platform,
+    // Migration-050 filters that affect the result set:
+    filters.estimatedRegion,
+    filters.audienceCountry,
+    filters.mentionsBrand,
+    filters.minHookQuality,
+    filters.maxEngagementBait,
+    filters.isConversionOriented,
+    filters.dominantCtaStyle,
     sort,
   ]);
 
@@ -142,26 +174,23 @@ export default function DiscoverPage() {
       search: debouncedSearch,
     };
 
-    const result = await searchCreators(
-      supabase,
+    const result = await fetchDiscoverPage(
       filtersWithDebouncedSearch,
       sort,
       nextPage,
-      PAGE_SIZE,
     );
-    const newRows = result.data as LeaderboardWithPlatform[];
-    setCreators((prev) => [...prev, ...newRows]);
+    setCreators((prev) => [...prev, ...result.data]);
     setPage(nextPage);
+    setHasMore(result.data.length >= PAGE_SIZE);
     setLoadingMore(false);
-    const newExtras = await enrich(newRows);
+    const newExtras = await enrich(result.data);
     setExtras((prev) => {
       const merged = new Map(prev);
       for (const [k, v] of newExtras) merged.set(k, v);
       return merged;
     });
-  }, [supabase, filters, debouncedSearch, sort, page, enrich]);
+  }, [filters, debouncedSearch, sort, page, enrich]);
 
-  const hasMore = creators.length < totalCount;
 
   // Reach-out: jump to the outreach Compose flow with the creator pre-selected.
   // The card's "Add to campaign" button opens the in-card dialog by default
@@ -189,8 +218,16 @@ export default function DiscoverPage() {
         onChange={setFilters}
         sort={sort}
         onSortChange={setSort}
-        resultCount={loading ? null : totalCount}
       />
+
+      {warning && (
+        <div
+          className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300"
+          role="status"
+        >
+          {warning}
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto pt-2">
         {loading ? (
@@ -228,7 +265,7 @@ export default function DiscoverPage() {
                       Loading...
                     </>
                   ) : (
-                    `Load more (${creators.length} of ${totalCount.toLocaleString()})`
+                    `Load more (${creators.length} loaded)`
                   )}
                 </Button>
               </div>

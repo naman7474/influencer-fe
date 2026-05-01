@@ -238,6 +238,58 @@ export async function getCampaignCreators(
   return (data ?? []) as CampaignCreatorWithDetails[];
 }
 
+/**
+ * Batched variant: fetch creators for many campaigns in one round-trip
+ * and group them by campaign_id. Replaces the N+1 pattern of mapping
+ * `getCampaignCreators` over a campaigns list — at scale a brand with
+ * 50+ campaigns made the campaigns page slow.
+ *
+ * Returns a map of `campaign_id → CampaignCreatorWithDetails[]`. Empty
+ * arrays for campaigns with no creators are NOT included; callers should
+ * default to `[]` on miss.
+ */
+export async function getCreatorsForCampaigns(
+  supabase: SupabaseClient<Database>,
+  campaignIds: string[],
+): Promise<Record<string, CampaignCreatorWithDetails[]>> {
+  if (campaignIds.length === 0) return {};
+
+  const { data, error } = await supabase
+    .from("campaign_creators")
+    .select(
+      `
+      *,
+      creator:creators (
+        id,
+        handle,
+        display_name,
+        avatar_url,
+        followers,
+        tier,
+        is_verified,
+        city,
+        country
+      )
+    `,
+    )
+    .in("campaign_id", campaignIds)
+    .order("assigned_at", { ascending: false });
+
+  if (error) {
+    console.error("getCreatorsForCampaigns error:", error);
+    return {};
+  }
+
+  const grouped: Record<string, CampaignCreatorWithDetails[]> = {};
+  for (const row of (data ?? []) as CampaignCreatorWithDetails[]) {
+    const id = row.campaign_id as string | undefined;
+    if (!id) continue;
+    if (!grouped[id]) grouped[id] = [];
+    grouped[id].push(row);
+  }
+  return grouped;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Get campaign creator status counts                                 */
 /* ------------------------------------------------------------------ */

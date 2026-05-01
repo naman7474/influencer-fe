@@ -23,6 +23,21 @@ export interface DiscoveryFilters {
   verifiedOnly: boolean;
   hasContact: boolean;
   platform: PlatformFilter;
+  /* ── Migration-050 additions: surfaced via the new filter UI sections. ─ */
+  /** Region inferred from on-camera audio, e.g. "North India". Partial match. */
+  estimatedRegion: string;
+  /** Audience's primary country (different from creator's country). */
+  audienceCountry: string;
+  /** Find creators who already mention this brand organically (GIN-indexed). */
+  mentionsBrand: string;
+  /** Min hook quality 0–1 (transcript_intelligence.avg_hook_quality). */
+  minHookQuality: number;
+  /** Max engagement bait 0–1 (caption_intelligence.engagement_bait_score). */
+  maxEngagementBait: number;
+  /** True = creator pushes specific actions, false = awareness-only. */
+  isConversionOriented: boolean | null;
+  /** CTA style the creator uses most. Empty = no filter. */
+  dominantCtaStyle: string;
 }
 
 export const DEFAULT_FILTERS: DiscoveryFilters = {
@@ -40,6 +55,13 @@ export const DEFAULT_FILTERS: DiscoveryFilters = {
   verifiedOnly: false,
   hasContact: false,
   platform: "all",
+  estimatedRegion: "",
+  audienceCountry: "",
+  mentionsBrand: "",
+  minHookQuality: 0,
+  maxEngagementBait: 1,
+  isConversionOriented: null,
+  dominantCtaStyle: "",
 };
 
 /* ------------------------------------------------------------------ */
@@ -78,9 +100,11 @@ export async function searchCreators(
       ? "mv_creator_leaderboard_blended"
       : "mv_creator_leaderboard";
 
-  let query = supabase
-    .from(view)
-    .select("*", { count: "exact" });
+  // No count: the UI shows a static "20K+ creators" headline, so we don't
+  // need to spend a planner round-trip per fetch. Saves work on every
+  // filter/scroll change. If we ever want a per-filter count, switch to
+  // count: "planned" (cheapest of the three; never use "exact" on the MV).
+  let query = supabase.from(view).select("*");
 
   if (filters.platform !== "all") {
     query = query.eq("platform", filters.platform);
@@ -126,14 +150,15 @@ export async function searchCreators(
     query = query.in("primary_audience_language", filters.audienceLanguages);
   }
 
-  // Minimum engagement rate
+  // Minimum engagement rate. The slider is in PERCENT units (0–15) but
+  // the leaderboard column is 0–1 decimal — divide before comparing.
   if (filters.minEngagementRate > 0) {
-    query = query.gte("avg_engagement_rate", filters.minEngagementRate);
+    query = query.gte("avg_engagement_rate", filters.minEngagementRate / 100);
   }
 
-  // Minimum authenticity score
+  // Minimum authenticity. Slider 0–100; column 0–1 — same conversion.
   if (filters.minAuthenticity > 0) {
-    query = query.gte("authenticity_score", filters.minAuthenticity);
+    query = query.gte("authenticity_score", filters.minAuthenticity / 100);
   }
 
   // Verified only
@@ -141,10 +166,38 @@ export async function searchCreators(
     query = query.eq("is_verified", true);
   }
 
-  // Has contact — we cannot check "not null" on a view column directly,
-  // so we filter by is_active as a proxy or skip. The view does not have
-  // contact_email, so we skip this filter at the query level.
-  // (Contact filtering would need a join or a different view.)
+  // ── Migration-050 filter columns on the leaderboard ──
+  if (filters.estimatedRegion.trim()) {
+    query = query.ilike(
+      "spoken_region",
+      `%${filters.estimatedRegion.trim()}%`,
+    );
+  }
+  if (filters.audienceCountry.trim()) {
+    query = query.eq("audience_country", filters.audienceCountry.trim());
+  }
+  if (filters.mentionsBrand.trim()) {
+    // organic_brand_mentions is a text[]; supabase-py exposes `contains`
+    // as the @> operator. GIN-indexed (idx_caption_intel_organic_brands).
+    query = query.contains("organic_brand_mentions", [
+      filters.mentionsBrand.trim(),
+    ]);
+  }
+  if (filters.minHookQuality > 0) {
+    query = query.gte("avg_hook_quality", filters.minHookQuality);
+  }
+  if (filters.isConversionOriented !== null) {
+    query = query.eq("is_conversion_oriented", filters.isConversionOriented);
+  }
+  if (filters.dominantCtaStyle.trim()) {
+    query = query.eq("dominant_cta_style", filters.dominantCtaStyle.trim());
+  }
+  // `maxEngagementBait` lives on caption_intelligence, not on the leaderboard
+  // view — we'd need a join to filter cheaply. Skip in the filters-only path
+  // and let the hybrid-search RPC apply it (which already lateral-joins).
+
+  // Has contact — the view doesn't expose contact_email, so we skip this
+  // filter at the query level. The hybrid-search RPC applies the same.
 
   // Sort
   const sortColumn =

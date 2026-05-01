@@ -9,6 +9,7 @@ import {
   X,
   Mail,
   Plus,
+  Megaphone,
   Users,
   UserCircle,
   Target,
@@ -371,8 +372,42 @@ function CreatorsCanvasView({ data, onSend }: { data: Record<string, unknown>; o
   const creators = (data.results as Array<Record<string, unknown>>) ?? [];
   const count = creators.length;
 
+  // Per-row selection. When the set is empty, footer actions act on ALL
+  // listed creators (the existing "bulk on all" behavior). When the user
+  // checks one or more rows, actions narrow to the selection. This avoids
+  // an awkward "select-all-by-default" state — the footer reads naturally
+  // as "Email all (10)" until the user opts into a subset.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const allIds = creators
+    .map((c) => String(c.id ?? c.handle ?? ""))
+    .filter((id) => id.length > 0);
+  const selectedCount = selectedIds.size;
+  const hasSelection = selectedCount > 0;
+  const isAllSelected = selectedCount > 0 && selectedCount === count;
+
+  const toggleRow = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    setSelectedIds((prev) =>
+      prev.size === count ? new Set() : new Set(allIds),
+    );
+  };
+
+  /** Creators the footer actions should act on (selection or all). */
+  const targetCreators = hasSelection
+    ? creators.filter((c) => selectedIds.has(String(c.id ?? c.handle ?? "")))
+    : creators;
+
   const handleDraftOutreach = () => {
-    const handles = creators
+    const handles = targetCreators
       .map((c) => `@${String(c.handle ?? "")}`)
       .filter((h) => h.length > 1)
       .slice(0, 10);
@@ -382,9 +417,9 @@ function CreatorsCanvasView({ data, onSend }: { data: Record<string, unknown>; o
   };
 
   const handleExportCSV = () => {
-    if (creators.length === 0) return;
+    if (targetCreators.length === 0) return;
     const headers = ["Handle", "Display Name", "Followers", "Tier", "Engagement Rate", "CPI Score", "Niche", "City", "Match Score"];
-    const rows = creators.map((c) => [
+    const rows = targetCreators.map((c) => [
       String(c.handle ?? ""),
       String(c.display_name ?? c.name ?? ""),
       String(c.followers ?? ""),
@@ -405,22 +440,84 @@ function CreatorsCanvasView({ data, onSend }: { data: Record<string, unknown>; o
     URL.revokeObjectURL(url);
   };
 
+  // Summary stats computed over `targetCreators` so they reflect the user's
+  // current focus: aggregate over the full result set when no selection,
+  // narrow to the selection when the user has checked a subset.
+  const erValuesPct: number[] = targetCreators
+    .map((c) => {
+      const scores = (c.scores ?? {}) as Record<string, unknown>;
+      const raw = scores.er ?? c.engagement_rate ?? c.er;
+      if (raw == null || !Number.isFinite(Number(raw))) return null;
+      const n = Number(raw);
+      return n <= 1 ? n * 100 : n;
+    })
+    .filter((v): v is number => v != null);
+  const avgER =
+    erValuesPct.length > 0
+      ? erValuesPct.reduce((a, b) => a + b, 0) / erValuesPct.length
+      : null;
+
+  const matchValuesPct: number[] = targetCreators
+    .map((c) => {
+      const scores = (c.scores ?? {}) as Record<string, unknown>;
+      const raw = scores.brand_match ?? c.match_score ?? c.match;
+      if (raw == null || !Number.isFinite(Number(raw))) return null;
+      const n = Number(raw);
+      return n <= 1 ? n * 100 : n;
+    })
+    .filter((v): v is number => v != null);
+  const avgMatch =
+    matchValuesPct.length > 0
+      ? matchValuesPct.reduce((a, b) => a + b, 0) / matchValuesPct.length
+      : null;
+
+  // "Warm leads" = creators who already mention any brand organically.
+  // Proxy for "we have a foot in the door" — they've talked about brands
+  // unprompted, so a partnership pitch is a smaller ask.
+  const warmLeadCount = targetCreators.filter((c) => {
+    const mentions = c.organic_brand_mentions;
+    return Array.isArray(mentions) && mentions.length > 0;
+  }).length;
+
+  const targetCount = targetCreators.length;
+
   return (
-    <div>
+    // Vertical layout pinned to its parent. Summary stats / filter bar /
+    // table / footer become a flex column where the table scrolls and
+    // the footer is always visible — fixes the previous behavior where
+    // bulk-action buttons sat below the fold.
+    <div className="flex h-full flex-col">
       {/* Summary stats */}
       <div
-        className="px-3 pt-3 pb-2.5 grid grid-cols-4 gap-2"
+        className="shrink-0 px-3 pt-3 pb-2.5 grid grid-cols-4 gap-2"
         style={{ borderBottom: "1px solid var(--border)" }}
       >
-        <SumStat label="Results" value={count} />
-        <SumStat label="Avg engagement" value="—" hint="from results" />
-        <SumStat label="Audience fit" value="—" hint="target overlap" />
-        <SumStat label="Warm leads" value="—" accent />
+        <SumStat
+          label="Results"
+          value={targetCount}
+          hint={hasSelection ? `of ${count} selected` : undefined}
+        />
+        <SumStat
+          label="Avg engagement"
+          value={avgER != null ? `${avgER.toFixed(1)}%` : "—"}
+          hint="from results"
+        />
+        <SumStat
+          label="Audience fit"
+          value={avgMatch != null ? Math.round(avgMatch) : "—"}
+          hint="avg brand match"
+        />
+        <SumStat
+          label="Warm leads"
+          value={warmLeadCount}
+          hint="mentions a brand"
+          accent={warmLeadCount > 0}
+        />
       </div>
 
       {/* Filter bar */}
       <div
-        className="px-3 py-2.5 flex items-center gap-2"
+        className="shrink-0 px-3 py-2.5 flex items-center gap-2"
         style={{
           borderBottom: "1px solid var(--border)",
           background: "var(--surface-2)",
@@ -436,14 +533,19 @@ function CreatorsCanvasView({ data, onSend }: { data: Record<string, unknown>; o
         </span>
       </div>
 
-      {/* Table */}
-      <div className="text-[12.5px]">
+      {/* Table — flex-1 + min-h-0 so it owns the scroll inside the canvas
+          column. Without min-h-0 the inner content forces the parent to
+          grow and the footer drops below the fold. */}
+      <div className="flex-1 min-h-0 overflow-y-auto text-[12.5px]">
         {/* Header */}
         <div
           className="grid px-3 py-2 sticky top-0 z-10"
           style={{
+            // Rate dropped (always blank until brands enter rates), and
+            // a 32-px column added at the end for the per-row View profile
+            // link.
             gridTemplateColumns:
-              "minmax(180px,1fr) 60px 76px 52px 72px 72px 90px",
+              "28px minmax(180px,1fr) 60px 76px 52px 72px 90px 32px",
             gap: 12,
             background: "var(--background)",
             borderBottom: "1px solid var(--border)",
@@ -452,39 +554,78 @@ function CreatorsCanvasView({ data, onSend }: { data: Record<string, unknown>; o
             textTransform: "uppercase",
             letterSpacing: 0.6,
             fontWeight: 600,
+            alignItems: "center",
           }}
         >
+          <input
+            type="checkbox"
+            aria-label={isAllSelected ? "Clear selection" : "Select all"}
+            checked={isAllSelected}
+            ref={(el) => {
+              if (el) el.indeterminate = hasSelection && !isAllSelected;
+            }}
+            onChange={toggleAll}
+            className="h-3.5 w-3.5 cursor-pointer accent-current"
+            style={{ color: "var(--foreground)" }}
+          />
           <div>Creator</div>
           <div className="text-right">Tier</div>
           <div className="text-right">Followers</div>
           <div className="text-right">ER</div>
           <div className="text-right">CPE</div>
-          <div className="text-right">Rate</div>
           <div className="text-right">Match</div>
+          <div />
         </div>
         {creators.map((c) => {
           const handle = String(c.handle ?? "");
           const initials = handle.slice(0, 2).toUpperCase();
           const followers = Number(c.followers ?? 0);
-          const er = c.engagement_rate ?? c.er;
-          const cpe = c.cpe ?? c.cpi_score;
+          // Briefs from creator_search / creator_semantic_search nest scores
+          // under `c.scores`. Older flat rows kept for back-compat.
+          const scores = (c.scores ?? {}) as Record<string, unknown>;
+          // ER may be 0–1 (decimal) on new briefs or 0–100 on old flat rows.
+          // Normalize to a percentage string for display.
+          const erRaw = scores.er ?? c.engagement_rate ?? c.er;
+          const erPct =
+            erRaw == null
+              ? null
+              : Number(erRaw) <= 1
+                ? Number(erRaw) * 100
+                : Number(erRaw);
+          const cpe = scores.cpi ?? c.cpe ?? c.cpi_score;
           const price = Number(c.price ?? c.rate ?? 0);
-          const rawMatch = Number(c.match_score ?? c.match ?? 0);
+          const rawMatch = Number(
+            (scores.brand_match as number | undefined) ??
+              c.match_score ??
+              c.match ??
+              0,
+          );
           // match_score is 0-1; legacy rows may be 0-100. Normalize to 0-100.
           const match = rawMatch > 1 ? Math.round(rawMatch) : Math.round(rawMatch * 100);
 
+          const rowId = String(c.id ?? c.handle ?? "");
+          const isSelected = selectedIds.has(rowId);
           return (
             <div
-              key={handle}
-              className="grid px-3 py-3 cursor-pointer transition-colors hover:bg-surface-2"
+              key={rowId || handle}
+              className="grid px-3 py-3 transition-colors"
               style={{
                 gridTemplateColumns:
-                  "minmax(180px,1fr) 60px 76px 52px 72px 72px 90px",
+                  "28px minmax(180px,1fr) 60px 76px 52px 72px 90px 32px",
                 gap: 12,
                 borderBottom: "1px solid var(--border)",
                 alignItems: "center",
+                background: isSelected ? "var(--indigo-soft)" : undefined,
               }}
             >
+              <input
+                type="checkbox"
+                aria-label={`Select ${handle}`}
+                checked={isSelected}
+                onChange={() => toggleRow(rowId)}
+                className="h-3.5 w-3.5 cursor-pointer accent-current"
+                style={{ color: "var(--foreground)" }}
+              />
               <div className="flex items-center gap-2.5 min-w-0">
                 <div
                   className="h-7 w-7 rounded-full grid place-items-center font-mono text-[10.5px] font-semibold shrink-0"
@@ -524,21 +665,18 @@ function CreatorsCanvasView({ data, onSend }: { data: Record<string, unknown>; o
                 className="text-right font-mono text-[12px]"
                 style={{
                   color:
-                    Number(er) >= 5
+                    erPct != null && erPct >= 5
                       ? "var(--success)"
                       : "var(--foreground)",
                 }}
               >
-                {er != null ? `${er}%` : "—"}
+                {erPct != null ? `${erPct.toFixed(1)}%` : "—"}
               </div>
               <div
                 className="text-right font-mono text-[12px]"
                 style={{ color: "var(--muted-foreground)" }}
               >
-                {cpe != null ? `₹${cpe}` : "—"}
-              </div>
-              <div className="text-right font-mono text-[12px]">
-                {price > 0 ? `₹${(price / 1000).toFixed(0)}k` : "—"}
+                {cpe != null ? Math.round(Number(cpe)) : "—"}
               </div>
               <div className="flex items-center justify-end gap-1.5">
                 {match > 0 && (
@@ -570,45 +708,123 @@ function CreatorsCanvasView({ data, onSend }: { data: Record<string, unknown>; o
                   </>
                 )}
               </div>
+              {/* View profile — opens /creator/[handle] in a new tab.
+                  Renders only when there's a usable handle. */}
+              <div className="flex items-center justify-end">
+                {handle && (
+                  <a
+                    href={`/creator/${encodeURIComponent(handle)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`Open ${handle}'s profile in a new tab`}
+                    title="View profile"
+                    className="grid h-7 w-7 place-items-center rounded-md transition-colors hover:bg-surface-2"
+                    style={{ color: "var(--fg-dim)" }}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                )}
+              </div>
             </div>
           );
         })}
       </div>
 
-      {/* Footer actions */}
+      {/* Footer actions — shrink-0 so they stay pinned at the bottom of
+          the canvas column even when the table grows past the viewport.
+          The previous layout let the footer scroll off-screen. */}
       <div
-        className="px-3 py-3"
+        className="shrink-0 px-3 py-3"
         style={{ borderTop: "1px solid var(--border)" }}
       >
-        <div className="flex items-center gap-2">
+        {/* Selection state line. Only shown when there's an active subset
+            selection — otherwise the buttons read "Email all (N)" and the
+            user has the implicit "all" mental model. */}
+        {hasSelection && (
+          <div
+            className="mb-2 flex items-center justify-between text-[11.5px]"
+            style={{ color: "var(--fg-dim)" }}
+          >
+            <span>
+              <strong style={{ color: "var(--foreground)" }}>
+                {selectedCount}
+              </strong>{" "}
+              of {count} selected
+            </span>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="text-[11.5px] underline-offset-2 hover:underline"
+              style={{ color: "var(--fg-dim)" }}
+            >
+              Clear selection
+            </button>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Primary bulk action — drafts outreach for the targets
+              (selection if any, else the full list). The agent's
+              outreach_drafter skill picks this up via the chat input. */}
           <button
             onClick={handleDraftOutreach}
-            className="h-8 px-3 rounded-md text-[12.5px] font-medium flex items-center gap-1.5 transition-colors active:scale-[0.97]"
+            disabled={targetCreators.length === 0}
+            className="h-8 px-3 rounded-md text-[12.5px] font-medium flex items-center gap-1.5 transition-colors active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
             style={{
               background: "var(--foreground)",
               color: "var(--background)",
             }}
           >
-            <Mail className="h-3.5 w-3.5" /> Draft outreach
+            <Mail className="h-3.5 w-3.5" />
+            {hasSelection
+              ? `Email selected (${selectedCount})`
+              : `Email all (${count})`}
           </button>
+
+          {/* Add the targets to a campaign. Routes through the agent so
+              it can pick (or create) the right campaign and attach all
+              the creator IDs at once. */}
           <button
             onClick={() => {
-              if (onSend) {
-                const handles = creators.map((c) => `@${String(c.handle ?? "")}`).filter((h) => h.length > 1);
-                onSend(`Save these creators as a list: ${handles.join(", ")}`);
-              }
+              if (!onSend || targetCreators.length === 0) return;
+              const handles = targetCreators
+                .map((c) => `@${String(c.handle ?? "")}`)
+                .filter((h) => h.length > 1);
+              onSend(
+                `Add these ${handles.length} creators to a campaign: ${handles.join(", ")}`,
+              );
             }}
-            className="h-8 px-3 rounded-md text-[12.5px] flex items-center gap-1.5 border transition-colors active:scale-[0.97]"
+            disabled={targetCreators.length === 0}
+            className="h-8 px-3 rounded-md text-[12.5px] font-medium flex items-center gap-1.5 border transition-colors active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ color: "var(--foreground)", background: "var(--card)" }}
+          >
+            <Megaphone className="h-3.5 w-3.5" />
+            {hasSelection
+              ? `Add ${selectedCount} to campaign`
+              : "Add to campaign"}
+          </button>
+
+          <button
+            onClick={() => {
+              if (!onSend || targetCreators.length === 0) return;
+              const handles = targetCreators
+                .map((c) => `@${String(c.handle ?? "")}`)
+                .filter((h) => h.length > 1);
+              onSend(`Save these creators as a list: ${handles.join(", ")}`);
+            }}
+            disabled={targetCreators.length === 0}
+            className="h-8 px-3 rounded-md text-[12.5px] flex items-center gap-1.5 border transition-colors active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ color: "var(--foreground)", background: "var(--card)" }}
           >
             <Plus className="h-3.5 w-3.5" /> Save as list
           </button>
           <button
             onClick={handleExportCSV}
-            className="h-8 px-3 rounded-md text-[12.5px] flex items-center gap-1.5 border transition-colors active:scale-[0.97]"
+            disabled={targetCreators.length === 0}
+            className="h-8 px-3 rounded-md text-[12.5px] flex items-center gap-1.5 border transition-colors active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ color: "var(--fg-dim)", background: "var(--card)" }}
           >
-            <Download className="h-3.5 w-3.5" /> Export CSV
+            <Download className="h-3.5 w-3.5" />
+            {hasSelection ? `Export ${selectedCount}` : "Export CSV"}
           </button>
         </div>
       </div>

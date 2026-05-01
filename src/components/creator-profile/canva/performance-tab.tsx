@@ -15,84 +15,48 @@ interface PerformanceTabProps {
   accent: string;
 }
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-const MAX_WEEKS = 12;
-const MIN_POPULATED_WEEKS = 3;
+const MIN_POPULATED_POSTS = 3;
 
-interface BucketResult {
+interface SeriesResult {
   values: number[];
-  /** Index 0 of `values` is this many weeks ago; last value is "now". */
-  spanWeeks: number;
+  /** Number of plotted data points (= count of posts with usable values). */
+  count: number;
   hasData: boolean;
 }
 
 /**
- * Bucket items by week-of-post and return ONLY the populated span
- * (first non-empty week → last non-empty week). Empty interior weeks
- * are linearly interpolated from neighbours so the line stays smooth.
- * No padding before the first or after the last populated week — that
- * was the "flat hardcoded" look in the previous version.
+ * Order one value per post chronologically (oldest → newest).
+ * One data point per post — no calendar bucketing — so a creator who
+ * shipped 20 videos in a single week doesn't get folded into a single
+ * data point that swamps the trend with the average of those 20.
+ *
+ * Posts missing a usable date or value are dropped. We still require
+ * `MIN_POPULATED_POSTS` plotted points before we render a trendline,
+ * because a 1- or 2-point line is not a trend.
  */
-function bucketByWeek<T>(
+function seriesByVideo<T>(
   items: T[],
   getDate: (item: T) => string | null,
   getValue: (item: T) => number | null,
-): BucketResult {
-  const now = Date.now();
-  const buckets: number[][] = Array.from({ length: MAX_WEEKS }, () => []);
-  let firstIdx = -1;
-  let lastIdx = -1;
-
+): SeriesResult {
+  const points: { ts: number; value: number }[] = [];
   for (const it of items) {
     const d = getDate(it);
     const v = getValue(it);
     if (!d || v == null || !Number.isFinite(v)) continue;
     const ts = new Date(d).getTime();
     if (Number.isNaN(ts)) continue;
-    const weeksAgo = Math.floor((now - ts) / WEEK_MS);
-    if (weeksAgo < 0 || weeksAgo >= MAX_WEEKS) continue;
-    const idx = MAX_WEEKS - 1 - weeksAgo;
-    buckets[idx].push(v);
-    if (firstIdx === -1 || idx < firstIdx) firstIdx = idx;
-    if (idx > lastIdx) lastIdx = idx;
+    points.push({ ts, value: v });
   }
-
-  if (firstIdx === -1 || lastIdx === -1) {
-    return { values: [], spanWeeks: 0, hasData: false };
+  if (points.length < MIN_POPULATED_POSTS) {
+    return { values: [], count: 0, hasData: false };
   }
-
-  const sliced = buckets.slice(firstIdx, lastIdx + 1);
-  const populated = sliced.filter((b) => b.length > 0).length;
-  if (populated < MIN_POPULATED_WEEKS) {
-    return { values: [], spanWeeks: 0, hasData: false };
-  }
-
-  const raw: (number | null)[] = sliced.map((b) =>
-    b.length ? b.reduce((s, x) => s + x, 0) / b.length : null,
-  );
-  // Linear-interpolate gaps between populated weeks so the line is smooth.
-  const values = raw.slice();
-  for (let i = 0; i < values.length; i += 1) {
-    if (values[i] != null) continue;
-    let prev = i - 1;
-    while (prev >= 0 && values[prev] == null) prev -= 1;
-    let next = i + 1;
-    while (next < values.length && values[next] == null) next += 1;
-    if (prev >= 0 && next < values.length) {
-      const a = values[prev] as number;
-      const b = values[next] as number;
-      const t = (i - prev) / (next - prev);
-      values[i] = a + (b - a) * t;
-    } else if (prev >= 0) {
-      values[i] = values[prev];
-    } else if (next < values.length) {
-      values[i] = values[next];
-    }
-  }
-
+  // Oldest → newest. The DB query returns newest-first, but trend reads
+  // left-to-right as time-ascending.
+  points.sort((a, b) => a.ts - b.ts);
   return {
-    values: values.map((v) => (v == null ? 0 : v)),
-    spanWeeks: sliced.length,
+    values: points.map((p) => p.value),
+    count: points.length,
     hasData: true,
   };
 }
@@ -135,14 +99,15 @@ function BigSpark({
   const hoverX = hover != null ? (xs[hover] / w) * 100 : 0;
   const hoverY = hover != null ? (ys[hover] / h) * 100 : 0;
   const hoverValue = hover != null ? data[hover] : 0;
-  const weeksAgoLabel =
+  // Each data point is one post (oldest = index 0, newest = last index).
+  const postLabel =
     hover == null
       ? ""
       : (() => {
-          const ago = data.length - 1 - hover;
-          if (ago === 0) return "now";
-          if (ago === 1) return "1 week ago";
-          return `${ago} weeks ago`;
+          const total = data.length;
+          if (hover === total - 1) return "latest post";
+          if (hover === 0) return `oldest of ${total}`;
+          return `post #${hover + 1} of ${total}`;
         })();
 
   return (
@@ -211,7 +176,7 @@ function BigSpark({
             {format(hoverValue)}
           </div>
           <div className="mt-0.5 text-[10px] font-semibold text-muted-foreground">
-            {weeksAgoLabel}
+            {postLabel}
           </div>
         </div>
       )}
@@ -219,28 +184,30 @@ function BigSpark({
   );
 }
 
-function buildAxisLabels(spanWeeks: number, last: number, format: (v: number) => string): string[] {
-  // Show oldest, intermediates (deduped), "now". Snap to whole weeks.
-  const oldest = `${spanWeeks - 1}w ago`;
-  const now = `now: ${format(last)}`;
-  const mid1Weeks = Math.round(((spanWeeks - 1) * 2) / 3);
-  const mid2Weeks = Math.round((spanWeeks - 1) / 3);
+function buildAxisLabels(count: number, last: number, format: (v: number) => string): string[] {
+  // Posts indexed 1..count where 1 is oldest and `count` is newest.
+  if (count <= 1) return [`now: ${format(last)}`];
+  const oldest = "oldest";
+  const newest = `latest: ${format(last)}`;
+  // Two intermediates at ~1/3 and ~2/3 of the range, expressed as post #.
+  const mid1 = Math.round(1 + (count - 1) / 3);
+  const mid2 = Math.round(1 + ((count - 1) * 2) / 3);
   const mids: string[] = [];
   const seen = new Set<number>();
-  for (const w of [mid1Weeks, mid2Weeks]) {
-    if (w <= 0 || w >= spanWeeks - 1) continue;
-    if (seen.has(w)) continue;
-    seen.add(w);
-    mids.push(`${w}w`);
+  for (const m of [mid1, mid2]) {
+    if (m <= 1 || m >= count) continue;
+    if (seen.has(m)) continue;
+    seen.add(m);
+    mids.push(`#${m}`);
   }
-  return [oldest, ...mids, now];
+  return [oldest, ...mids, newest];
 }
 
 function TrendCard({
   title,
   subtitle,
   data,
-  spanWeeks,
+  count,
   hasData,
   color,
   format,
@@ -248,7 +215,7 @@ function TrendCard({
   title: string;
   subtitle: string;
   data: number[];
-  spanWeeks: number;
+  count: number;
   hasData: boolean;
   color: string;
   format: (v: number) => string;
@@ -258,7 +225,7 @@ function TrendCard({
       <SectionCard title={title} subtitle={subtitle}>
         <EmptyCard
           title="Not enough recent posts to chart"
-          description="We need at least 3 weeks of posts in the last 12 weeks to plot a trend."
+          description="Need at least 3 posts with usable values to plot a trend."
         />
       </SectionCard>
     );
@@ -267,7 +234,7 @@ function TrendCard({
   const last = data[data.length - 1] ?? 0;
   const delta = first === 0 ? 0 : ((last - first) / first) * 100;
   const positive = delta >= 0;
-  const labels = buildAxisLabels(spanWeeks, last, format);
+  const labels = buildAxisLabels(count, last, format);
 
   return (
     <SectionCard
@@ -493,6 +460,41 @@ function OtherMetricsCard({ scores }: { scores: CreatorScore | null }) {
       value: scores.brand_mentions_count.toString(),
     });
   }
+
+  // YT-specific score columns aren't in the generated DB types yet (schema
+  // drift since migration 043 — multi_platform_schema). Cast to read them.
+  const ytExtras = scores as unknown as {
+    avg_views_per_sub?: number | null;
+    watch_through_proxy?: number | null;
+    upload_cadence_days?: number | null;
+    subscriber_growth_proxy?: number | null;
+  };
+  if (ytExtras.avg_views_per_sub != null) {
+    pills.push({
+      label: "Views / sub",
+      value: `${(ytExtras.avg_views_per_sub * 100).toFixed(1)}%`,
+    });
+  }
+  if (ytExtras.watch_through_proxy != null) {
+    pills.push({
+      label: "Watch-through",
+      value: `${(ytExtras.watch_through_proxy * 100).toFixed(1)}%`,
+    });
+  }
+  if (ytExtras.upload_cadence_days != null) {
+    const d = ytExtras.upload_cadence_days;
+    pills.push({
+      label: "Upload cadence",
+      value: d < 1 ? `${(d * 24).toFixed(1)}h` : `${d.toFixed(1)}d`,
+    });
+  }
+  if (ytExtras.subscriber_growth_proxy != null) {
+    pills.push({
+      label: "Sub growth",
+      value: `${(ytExtras.subscriber_growth_proxy * 100).toFixed(1)}%`,
+    });
+  }
+
   if (!pills.length) return null;
 
   return (
@@ -502,7 +504,7 @@ function OtherMetricsCard({ scores }: { scores: CreatorScore | null }) {
       span={2}
     >
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        {pills.slice(0, 6).map((p) => (
+        {pills.map((p) => (
           <StatPill key={p.label} label={p.label} value={p.value} />
         ))}
       </div>
@@ -513,7 +515,7 @@ function OtherMetricsCard({ scores }: { scores: CreatorScore | null }) {
 export function PerformanceTab({ scores, content, accent }: PerformanceTabProps) {
   const engagement = React.useMemo(
     () =>
-      bucketByWeek(
+      seriesByVideo(
         content,
         (c) => (c.kind === "ig_post" ? c.date_posted : c.published_at),
         (c) => {
@@ -531,18 +533,30 @@ export function PerformanceTab({ scores, content, accent }: PerformanceTabProps)
     [content],
   );
 
-  const views = React.useMemo(
-    () =>
-      bucketByWeek(
-        content,
-        (c) => (c.kind === "ig_post" ? c.date_posted : c.published_at),
-        (c) =>
+  const views = React.useMemo(() => {
+    // Views/day instead of absolute views — otherwise the newest video
+    // always looks "down" because it's had hours, not months, to accumulate.
+    // Floor age at 1 day so a brand-new post doesn't overshoot wildly from
+    // a tiny denominator (and so the launch spike doesn't dominate).
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    return seriesByVideo(
+      content,
+      (c) => (c.kind === "ig_post" ? c.date_posted : c.published_at),
+      (c) => {
+        const dateStr = c.kind === "ig_post" ? c.date_posted : c.published_at;
+        const total =
           c.kind === "ig_post"
             ? c.video_view_count ?? c.video_play_count ?? c.likes ?? null
-            : c.view_count ?? null,
-      ),
-    [content],
-  );
+            : c.view_count ?? null;
+        if (total == null || !dateStr) return null;
+        const ts = new Date(dateStr).getTime();
+        if (Number.isNaN(ts)) return null;
+        const days = Math.max(1, (now - ts) / DAY_MS);
+        return total / days;
+      },
+    );
+  }, [content]);
 
   return (
     <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
@@ -550,11 +564,11 @@ export function PerformanceTab({ scores, content, accent }: PerformanceTabProps)
         title="Engagement trend"
         subtitle={
           engagement.hasData
-            ? `Last ${engagement.spanWeeks} ${engagement.spanWeeks === 1 ? "week" : "weeks"} · % engagement per post`
-            : "Last 12 weeks · % engagement per post"
+            ? `Per post · last ${engagement.count} ${engagement.count === 1 ? "post" : "posts"} · oldest → newest`
+            : "Per post · oldest → newest"
         }
         data={engagement.values}
-        spanWeeks={engagement.spanWeeks}
+        count={engagement.count}
         hasData={engagement.hasData}
         color={accent}
         format={(v) => `${v.toFixed(1)}%`}
@@ -563,14 +577,14 @@ export function PerformanceTab({ scores, content, accent }: PerformanceTabProps)
         title="Views trend"
         subtitle={
           views.hasData
-            ? `Avg views per post · last ${views.spanWeeks} ${views.spanWeeks === 1 ? "week" : "weeks"}`
-            : "Avg views per post · last 12 weeks"
+            ? `Views per day · last ${views.count} ${views.count === 1 ? "post" : "posts"} · age-normalized`
+            : "Views per day · age-normalized"
         }
         data={views.values}
-        spanWeeks={views.spanWeeks}
+        count={views.count}
         hasData={views.hasData}
         color="var(--canva-purple)"
-        format={(v) => formatFollowers(Math.round(v))}
+        format={(v) => `${formatFollowers(Math.round(v))}/day`}
       />
       <FormatsCard content={content} />
       <OtherMetricsCard scores={scores} />

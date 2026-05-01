@@ -2,13 +2,17 @@ import { describe, it, expect, vi } from "vitest";
 import { getCreatorDetailsTool } from "../get-creator-details";
 
 /* ------------------------------------------------------------------ */
-/*  Mock Helpers                                                       */
+/*  Mock helpers                                                       */
 /* ------------------------------------------------------------------ */
 
 type MockRow = Record<string, unknown>;
 
+/**
+ * Minimal supabase-py-style query-builder stub. The builder is thenable —
+ * awaiting it resolves with `{ data, error }`. All chain methods are no-ops
+ * that return the same builder.
+ */
 function mockQueryBuilder(data: MockRow[] | null = [], error: unknown = null) {
-  let isSingle = false;
   const builder: Record<string, unknown> = {};
   const chainMethods = [
     "select", "eq", "neq", "in", "gte", "lte", "ilike", "or",
@@ -17,18 +21,8 @@ function mockQueryBuilder(data: MockRow[] | null = [], error: unknown = null) {
   for (const m of chainMethods) {
     builder[m] = vi.fn().mockReturnValue(builder);
   }
-  builder.single = vi.fn().mockImplementation(() => {
-    isSingle = true;
-    return builder;
-  });
   builder.then = (resolve: (v: unknown) => void) => {
-    if (isSingle) {
-      const singleData =
-        Array.isArray(data) && data.length > 0 ? data[0] : null;
-      resolve({ data: singleData, error });
-    } else {
-      resolve({ data, error });
-    }
+    resolve({ data, error });
   };
   return builder;
 }
@@ -41,48 +35,101 @@ const execOpts = {
   abortSignal: undefined as never,
 };
 
-/* ── Test data ─────────────────────────────────────────────── */
+/* ── Test fixtures ────────────────────────────────────────────── */
 
-const leaderboardCreator = {
-  creator_id: "c1",
-  handle: "@beauty_queen",
+const creatorRow = {
+  id: "c1",
+  handle: "beauty_queen",
   display_name: "Beauty Queen",
   followers: 50000,
   tier: "mid",
   city: "Mumbai",
   country: "India",
   is_verified: true,
-  cpi: 78,
-  engagement_quality: 82,
-  content_quality: 75,
-  audience_authenticity: 88,
-  avg_engagement_rate: 4.5,
-  engagement_trend: "rising",
-  posts_per_week: 5,
-  primary_niche: "beauty",
-  primary_tone: "educational",
-  primary_language: "Hindi",
-  primary_audience_language: "Hindi",
-  primary_country: "India",
-  authenticity_score: 90,
-  engagement_quality_score: 85,
-  community_strength: 72,
+  biography: "Beauty enthusiast",
+  contact_email: "beauty@example.com",
+  contact_phone: null,
+  external_url: "https://beauty-queen.in",
+  avatar_url: "https://cdn/avatar.jpg",
+  first_scraped_at: "2026-01-01",
+  last_scraped_at: "2026-04-15",
 };
 
-const creatorFull = {
-  contact_email: "beauty@example.com",
-  biography: "Beauty enthusiast sharing tips and reviews",
-  external_url: "https://beauty-queen.in",
+const igProfile = {
+  platform: "instagram",
+  handle: "beauty_queen",
+  profile_url: "https://instagram.com/beauty_queen",
+  display_name: "Beauty Queen",
+  followers_or_subs: 50000,
+  posts_or_videos_count: 320,
+  avatar_url: "https://cdn/avatar.jpg",
+  bio: "Beauty enthusiast",
+  is_verified: true,
+  country: "India",
+  category: "Beauty",
+  external_links: [],
+  last_synced_at: "2026-04-15",
+};
+
+const igScores = {
+  platform: "instagram",
+  cpi: 78,
+  avg_engagement_rate: 0.045,
+  engagement_quality: 82,
+  computed_at: "2026-04-10",
+};
+
+const igCaption = {
+  platform: "instagram",
+  primary_niche: "beauty",
+  primary_tone: "educational",
+  organic_brand_mentions: ["Lakme"],
+  raw_llm_response: { huge: "payload that should be stripped" },
+  analyzed_at: "2026-04-10",
+};
+
+const igAudience = {
+  platform: "instagram",
+  primary_audience_language: "Hindi",
+  primary_country: "India",
+  authenticity_score: 0.9,
+  raw_llm_response: { another: "huge payload" },
+  analyzed_at: "2026-04-10",
 };
 
 const brandMatch = {
-  match_score: 88,
-  niche_fit_score: 92,
-  audience_geo_score: 85,
-  match_reasoning: "Excellent niche fit, strong Mumbai audience overlap",
+  match_score: 0.88,
+  niche_fit_score: 0.92,
+  audience_geo_score: 0.85,
+  match_reasoning: "Strong fit",
   already_mentions_brand: true,
   mentions_competitor: false,
 };
+
+interface DetailResult {
+  error?: string;
+  profile?: Record<string, unknown>;
+  social_profiles?: Array<Record<string, unknown>>;
+  intelligence_by_platform?: Record<
+    string,
+    {
+      scores: Record<string, unknown> | null;
+      caption: Record<string, unknown> | null;
+      transcript: Record<string, unknown> | null;
+      audience: Record<string, unknown> | null;
+    }
+  >;
+  brand_match?: Record<string, unknown> | null;
+  collaboration_history?: Array<Record<string, unknown>>;
+}
+
+/**
+ * Builds a `from(table)` mock that returns table-specific data so we don't
+ * have to construct a full builder per test.
+ */
+function buildFromMock(rowsByTable: Record<string, MockRow[]>) {
+  return vi.fn((table: string) => mockQueryBuilder(rowsByTable[table] ?? []));
+}
 
 /* ------------------------------------------------------------------ */
 /*  Tests                                                              */
@@ -97,308 +144,214 @@ describe("get-creator-details", () => {
     } as unknown as SupabaseParam;
 
     const t = getCreatorDetailsTool(brandId, supabase);
-    const result = await t.execute({}, execOpts);
-    expect(result).toHaveProperty("error", "Provide either creator_id or handle");
+    const result = (await t.execute!({}, execOpts)) as DetailResult;
+
+    expect(result.error).toBe("Provide either creator_id or handle");
   });
 
-  it("returns error when creator not found by id", async () => {
+  it("returns error when creator not found", async () => {
     const supabase = {
-      from: vi.fn(() => mockQueryBuilder([])),
+      from: buildFromMock({}),
     } as unknown as SupabaseParam;
 
     const t = getCreatorDetailsTool(brandId, supabase);
-    const result = await t.execute(
-      { creator_id: "nonexistent" },
-      execOpts
-    );
-    expect(result).toHaveProperty("error", "Creator not found");
+    const result = (await t.execute!(
+      { creator_id: "missing" },
+      execOpts,
+    )) as DetailResult;
+
+    expect(result.error).toBe("Creator not found");
   });
 
-  it("returns error when creator not found by handle", async () => {
+  it("resolves by creator_id and returns the profile", async () => {
     const supabase = {
-      from: vi.fn(() => mockQueryBuilder([])),
+      from: buildFromMock({
+        creators: [creatorRow],
+        creator_social_profiles: [igProfile],
+        creator_scores: [igScores],
+        caption_intelligence: [igCaption],
+        transcript_intelligence: [],
+        audience_intelligence: [igAudience],
+        creator_brand_matches: [brandMatch],
+        campaign_creators: [],
+      }),
     } as unknown as SupabaseParam;
 
     const t = getCreatorDetailsTool(brandId, supabase);
-    const result = await t.execute(
-      { handle: "nonexistent_handle" },
-      execOpts
-    );
-    expect(result).toHaveProperty("error", "Creator not found");
+    const result = (await t.execute!(
+      { creator_id: "c1" },
+      execOpts,
+    )) as DetailResult;
+
+    expect(result.profile?.id).toBe("c1");
+    expect(result.profile?.handle).toBe("beauty_queen");
+    expect(result.profile?.display_name).toBe("Beauty Queen");
+    expect(result.profile?.contact_email).toBe("beauty@example.com");
+    expect(result.profile?.avatar_url).toBe("https://cdn/avatar.jpg");
   });
 
-  it("returns full creator details by creator_id", async () => {
-    let callCount = 0;
+  it("returns social_profiles array", async () => {
+    const supabase = {
+      from: buildFromMock({
+        creators: [creatorRow],
+        creator_social_profiles: [igProfile],
+      }),
+    } as unknown as SupabaseParam;
+
+    const t = getCreatorDetailsTool(brandId, supabase);
+    const result = (await t.execute!(
+      { creator_id: "c1" },
+      execOpts,
+    )) as DetailResult;
+
+    expect(result.social_profiles).toHaveLength(1);
+    expect(result.social_profiles?.[0].platform).toBe("instagram");
+    expect(result.social_profiles?.[0].handle).toBe("beauty_queen");
+  });
+
+  it("returns intelligence_by_platform with the full bundle per platform", async () => {
+    const supabase = {
+      from: buildFromMock({
+        creators: [creatorRow],
+        creator_social_profiles: [igProfile],
+        creator_scores: [igScores],
+        caption_intelligence: [igCaption],
+        transcript_intelligence: [],
+        audience_intelligence: [igAudience],
+      }),
+    } as unknown as SupabaseParam;
+
+    const t = getCreatorDetailsTool(brandId, supabase);
+    const result = (await t.execute!(
+      { creator_id: "c1" },
+      execOpts,
+    )) as DetailResult;
+
+    const ig = result.intelligence_by_platform?.instagram;
+    expect(ig?.scores).toMatchObject({ cpi: 78, avg_engagement_rate: 0.045 });
+    expect(ig?.caption?.primary_niche).toBe("beauty");
+    expect(ig?.caption?.organic_brand_mentions).toEqual(["Lakme"]);
+    expect(ig?.audience?.primary_country).toBe("India");
+    expect(ig?.transcript).toBeNull();
+  });
+
+  it("strips raw_llm_response from intelligence rows to keep payload compact", async () => {
+    const supabase = {
+      from: buildFromMock({
+        creators: [creatorRow],
+        caption_intelligence: [igCaption],
+        audience_intelligence: [igAudience],
+      }),
+    } as unknown as SupabaseParam;
+
+    const t = getCreatorDetailsTool(brandId, supabase);
+    const result = (await t.execute!(
+      { creator_id: "c1" },
+      execOpts,
+    )) as DetailResult;
+
+    expect(
+      result.intelligence_by_platform?.instagram.caption?.raw_llm_response,
+    ).toBeUndefined();
+    expect(
+      result.intelligence_by_platform?.instagram.audience?.raw_llm_response,
+    ).toBeUndefined();
+  });
+
+  it("falls back to creator_social_profiles when handle isn't in creators table", async () => {
+    // Direct creators.handle lookup returns nothing; csp join routes us back.
+    let creatorsCallCount = 0;
     const supabase = {
       from: vi.fn((table: string) => {
-        callCount++;
-        if (table === "mv_creator_leaderboard") {
-          return mockQueryBuilder([leaderboardCreator]);
-        }
         if (table === "creators") {
-          return mockQueryBuilder([creatorFull]);
+          creatorsCallCount += 1;
+          // First call: handle lookup → empty.
+          // Second call: id lookup → return the row.
+          return mockQueryBuilder(creatorsCallCount === 1 ? [] : [creatorRow]);
         }
-        if (table === "creator_brand_matches") {
-          return mockQueryBuilder([brandMatch]);
-        }
-        if (table === "campaign_creators") {
-          return mockQueryBuilder([
-            {
-              campaign_id: "camp-1",
-              status: "confirmed",
-              agreed_rate: 45000,
-              campaigns: { name: "Summer Sale", goal: "Sales", status: "active", brand_id: "brand-1" },
-            },
-            {
-              campaign_id: "camp-2",
-              status: "completed",
-              agreed_rate: 50000,
-              campaigns: { name: "Winter Push", goal: "Awareness", status: "completed", brand_id: "brand-1" },
-            },
-          ]);
+        if (table === "creator_social_profiles") {
+          // First call (during resolution): return creator_id mapping.
+          // Subsequent (the parallel fetch): the actual profile row.
+          return mockQueryBuilder([{ creator_id: "c1" }, igProfile]);
         }
         return mockQueryBuilder([]);
       }),
     } as unknown as SupabaseParam;
 
     const t = getCreatorDetailsTool(brandId, supabase);
-    const result = (await t.execute(
-      { creator_id: "c1" },
-      execOpts
-    )) as {
-      profile: Record<string, unknown>;
-      scores: Record<string, unknown>;
-      content: Record<string, unknown>;
-      audience: Record<string, unknown>;
-      brand_match: Record<string, unknown>;
-      collaboration_history: { campaign_id: string; status: string; agreed_rate: number }[];
-    };
-
-    // Profile
-    expect(result.profile.id).toBe("c1");
-    expect(result.profile.handle).toBe("@beauty_queen");
-    expect(result.profile.display_name).toBe("Beauty Queen");
-    expect(result.profile.followers).toBe(50000);
-    expect(result.profile.tier).toBe("mid");
-    expect(result.profile.city).toBe("Mumbai");
-    expect(result.profile.country).toBe("India");
-    expect(result.profile.is_verified).toBe(true);
-    expect(result.profile.biography).toBe("Beauty enthusiast sharing tips and reviews");
-    expect(result.profile.contact_email).toBe("beauty@example.com");
-    expect(result.profile.external_url).toBe("https://beauty-queen.in");
-
-    // Scores
-    expect(result.scores.cpi).toBe(78);
-    expect(result.scores.engagement_quality).toBe(82);
-    expect(result.scores.content_quality).toBe(75);
-    expect(result.scores.audience_authenticity).toBe(88);
-    expect(result.scores.avg_engagement_rate).toBe(4.5);
-    expect(result.scores.engagement_trend).toBe("rising");
-    expect(result.scores.posts_per_week).toBe(5);
-
-    // Content
-    expect(result.content.primary_niche).toBe("beauty");
-    expect(result.content.primary_tone).toBe("educational");
-    expect(result.content.primary_language).toBe("Hindi");
-
-    // Audience
-    expect(result.audience.primary_audience_language).toBe("Hindi");
-    expect(result.audience.primary_country).toBe("India");
-    expect(result.audience.authenticity_score).toBe(90);
-    expect(result.audience.engagement_quality_score).toBe(85);
-    expect(result.audience.community_strength).toBe(72);
-
-    // Brand match
-    expect(result.brand_match).not.toBeNull();
-    expect(result.brand_match.match_score).toBe(88);
-    expect(result.brand_match.niche_fit).toBe(92);
-    expect(result.brand_match.audience_geo).toBe(85);
-    expect(result.brand_match.reasoning).toBe("Excellent niche fit, strong Mumbai audience overlap");
-    expect(result.brand_match.mentions_brand).toBe(true);
-    expect(result.brand_match.mentions_competitor).toBe(false);
-
-    // Collaboration history
-    expect(result.collaboration_history).toHaveLength(2);
-    expect(result.collaboration_history[0].campaign_id).toBe("camp-1");
-    expect(result.collaboration_history[0].status).toBe("confirmed");
-    expect(result.collaboration_history[0].agreed_rate).toBe(45000);
-    expect(result.collaboration_history[1].campaign_id).toBe("camp-2");
-    expect(result.collaboration_history[1].agreed_rate).toBe(50000);
-  });
-
-  it("looks up by handle with ilike when no creator_id", async () => {
-    const fromSpy = vi.fn((table: string) => {
-      if (table === "mv_creator_leaderboard") {
-        return mockQueryBuilder([leaderboardCreator]);
-      }
-      if (table === "creators") {
-        return mockQueryBuilder([creatorFull]);
-      }
-      if (table === "creator_brand_matches") {
-        return mockQueryBuilder([]);
-      }
-      if (table === "campaign_creators") {
-        return mockQueryBuilder([]);
-      }
-      return mockQueryBuilder([]);
-    });
-    const supabase = { from: fromSpy } as unknown as SupabaseParam;
-
-    const t = getCreatorDetailsTool(brandId, supabase);
-    const result = (await t.execute(
+    const result = (await t.execute!(
       { handle: "beauty_queen" },
-      execOpts
-    )) as { profile: Record<string, unknown> };
+      execOpts,
+    )) as DetailResult;
 
-    expect(result.profile.handle).toBe("@beauty_queen");
-    // Verify ilike was called for handle lookup
-    const leaderboardCalls = fromSpy.mock.calls.filter((c) => c[0] === "mv_creator_leaderboard");
-    expect(leaderboardCalls.length).toBeGreaterThan(0);
+    expect(result.error).toBeUndefined();
+    expect(result.profile?.id).toBe("c1");
   });
 
-  it("returns null brand_match when no match data exists", async () => {
+  it("returns brand_match when there's a match row", async () => {
     const supabase = {
-      from: vi.fn((table: string) => {
-        if (table === "mv_creator_leaderboard") {
-          return mockQueryBuilder([leaderboardCreator]);
-        }
-        if (table === "creators") {
-          return mockQueryBuilder([creatorFull]);
-        }
-        if (table === "creator_brand_matches") {
-          return mockQueryBuilder([]); // no match
-        }
-        if (table === "campaign_creators") {
-          return mockQueryBuilder([]);
-        }
-        return mockQueryBuilder([]);
+      from: buildFromMock({
+        creators: [creatorRow],
+        creator_brand_matches: [brandMatch],
       }),
     } as unknown as SupabaseParam;
 
     const t = getCreatorDetailsTool(brandId, supabase);
-    const result = (await t.execute(
+    const result = (await t.execute!(
       { creator_id: "c1" },
-      execOpts
-    )) as { brand_match: null };
+      execOpts,
+    )) as DetailResult;
+
+    expect(result.brand_match).not.toBeNull();
+    expect(result.brand_match?.match_score).toBe(0.88);
+    expect(result.brand_match?.reasoning).toBe("Strong fit");
+    expect(result.brand_match?.mentions_brand).toBe(true);
+  });
+
+  it("returns null brand_match when there's no match row", async () => {
+    const supabase = {
+      from: buildFromMock({
+        creators: [creatorRow],
+        creator_brand_matches: [], // no match
+      }),
+    } as unknown as SupabaseParam;
+
+    const t = getCreatorDetailsTool(brandId, supabase);
+    const result = (await t.execute!(
+      { creator_id: "c1" },
+      execOpts,
+    )) as DetailResult;
 
     expect(result.brand_match).toBeNull();
   });
 
-  it("returns empty collaboration history when no past campaigns", async () => {
+  it("returns collaboration_history flattened to id/status/rate", async () => {
+    const campaigns = [
+      {
+        campaign_id: "camp-1",
+        status: "active",
+        agreed_rate: 12000,
+        campaigns: { name: "Summer", goal: "awareness", status: "active", brand_id: brandId },
+      },
+    ];
     const supabase = {
-      from: vi.fn((table: string) => {
-        if (table === "mv_creator_leaderboard") {
-          return mockQueryBuilder([leaderboardCreator]);
-        }
-        if (table === "creators") {
-          return mockQueryBuilder([creatorFull]);
-        }
-        if (table === "creator_brand_matches") {
-          return mockQueryBuilder([]);
-        }
-        if (table === "campaign_creators") {
-          return mockQueryBuilder([]); // no past campaigns
-        }
-        return mockQueryBuilder([]);
+      from: buildFromMock({
+        creators: [creatorRow],
+        campaign_creators: campaigns,
       }),
     } as unknown as SupabaseParam;
 
     const t = getCreatorDetailsTool(brandId, supabase);
-    const result = (await t.execute(
+    const result = (await t.execute!(
       { creator_id: "c1" },
-      execOpts
-    )) as { collaboration_history: unknown[] };
+      execOpts,
+    )) as DetailResult;
 
-    expect(result.collaboration_history).toHaveLength(0);
-  });
-
-  it("handles missing creator full data (no email, bio, url)", async () => {
-    const supabase = {
-      from: vi.fn((table: string) => {
-        if (table === "mv_creator_leaderboard") {
-          return mockQueryBuilder([leaderboardCreator]);
-        }
-        if (table === "creators") {
-          return mockQueryBuilder([]); // no extra data found
-        }
-        if (table === "creator_brand_matches") {
-          return mockQueryBuilder([]);
-        }
-        if (table === "campaign_creators") {
-          return mockQueryBuilder([]);
-        }
-        return mockQueryBuilder([]);
-      }),
-    } as unknown as SupabaseParam;
-
-    const t = getCreatorDetailsTool(brandId, supabase);
-    const result = (await t.execute(
-      { creator_id: "c1" },
-      execOpts
-    )) as { profile: Record<string, unknown> };
-
-    expect(result.profile.biography).toBeNull();
-    expect(result.profile.contact_email).toBeNull();
-    expect(result.profile.external_url).toBeNull();
-  });
-
-  it("prefers creator_id over handle when both provided", async () => {
-    const fromSpy = vi.fn((table: string) => {
-      if (table === "mv_creator_leaderboard") {
-        const builder = mockQueryBuilder([leaderboardCreator]);
-        // Track which filter method is called
-        const eqSpy = vi.fn().mockReturnValue(builder);
-        builder.eq = eqSpy;
-        return builder;
-      }
-      if (table === "creators") {
-        return mockQueryBuilder([creatorFull]);
-      }
-      if (table === "creator_brand_matches") {
-        return mockQueryBuilder([]);
-      }
-      if (table === "campaign_creators") {
-        return mockQueryBuilder([]);
-      }
-      return mockQueryBuilder([]);
+    expect(result.collaboration_history).toHaveLength(1);
+    expect(result.collaboration_history?.[0]).toEqual({
+      campaign_id: "camp-1",
+      status: "active",
+      agreed_rate: 12000,
     });
-    const supabase = { from: fromSpy } as unknown as SupabaseParam;
-
-    const t = getCreatorDetailsTool(brandId, supabase);
-    const result = (await t.execute(
-      { creator_id: "c1", handle: "beauty_queen" },
-      execOpts
-    )) as { profile: Record<string, unknown> };
-
-    // Should use creator_id path (eq) not handle path (ilike)
-    expect(result.profile.id).toBe("c1");
-  });
-
-  it("handles null campaign_creators data gracefully", async () => {
-    const supabase = {
-      from: vi.fn((table: string) => {
-        if (table === "mv_creator_leaderboard") {
-          return mockQueryBuilder([leaderboardCreator]);
-        }
-        if (table === "creators") {
-          return mockQueryBuilder([creatorFull]);
-        }
-        if (table === "creator_brand_matches") {
-          return mockQueryBuilder([brandMatch]);
-        }
-        if (table === "campaign_creators") {
-          return mockQueryBuilder(null); // null data
-        }
-        return mockQueryBuilder([]);
-      }),
-    } as unknown as SupabaseParam;
-
-    const t = getCreatorDetailsTool(brandId, supabase);
-    const result = (await t.execute(
-      { creator_id: "c1" },
-      execOpts
-    )) as { collaboration_history: unknown[] };
-
-    expect(result.collaboration_history).toHaveLength(0);
   });
 });

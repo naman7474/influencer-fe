@@ -1,6 +1,12 @@
 "use client";
 
+import * as React from "react";
+import Link from "next/link";
+import { ExternalLink, Plus, BadgeCheck, Sparkles } from "lucide-react";
+
 import { NegotiationCard } from "./negotiation-card";
+import { AddToCampaignDialog } from "@/components/creators/add-to-campaign-dialog";
+import { formatFollowers } from "@/lib/format";
 
 interface ToolCardProps {
   tool: Record<string, unknown>;
@@ -17,7 +23,13 @@ export function ToolResultCard({ tool, compact = false }: ToolCardProps) {
 
   if (!result) return null;
 
-  if (name === "creator_search" && result?.results) {
+  // Both creator_search and creator_semantic_search return briefs in the
+  // same shape — render with the same card. The semantic flavour will
+  // surface a similarity chip on each card (see CreatorBriefCard).
+  if (
+    (name === "creator_search" || name === "creator_semantic_search") &&
+    result?.results
+  ) {
     return <CreatorSearchCard result={result} compact={compact} />;
   }
 
@@ -79,6 +91,60 @@ export function ToolResultCard({ tool, compact = false }: ToolCardProps) {
 }
 
 /* ── Creator Search Card ─────────────────────────────────── */
+/**
+ * Renders the result of `creator_search` (and forward-compat with
+ * `creator_semantic_search`). Each result is a rich, interactive card:
+ * avatar, handle, platform pill, stat chips, "why" reasoning, and two
+ * inline action buttons (Open profile · Add to campaign).
+ *
+ * Compact mode (used inside conversation history) collapses each card
+ * to a one-line summary so old turns don't dominate the scrollback.
+ */
+
+interface CreatorBrief {
+  id: string;
+  handle: string | null;
+  display_name: string | null;
+  platform: "instagram" | "youtube" | null;
+  avatar_url: string | null;
+  followers: number | null;
+  tier: string | null;
+  is_verified: boolean | null;
+  summary?: string;
+  why?: string;
+  scores?: {
+    cpi: number | null;
+    er: number | null;
+    hook_quality: number | null;
+    audience_authenticity: number | null;
+    brand_match: number | null;
+    /** Only set by creator_semantic_search — RRF-derived 0–1 score. */
+    similarity?: number | null;
+  };
+  /* Back-compat with the old flat shape so older messages still render */
+  cpi_score?: number | null;
+  engagement_rate?: number | null;
+  match_score?: number | null;
+  niche?: string | null;
+  language?: string | null;
+  city?: string | null;
+  country?: string | null;
+}
+
+function formatFiltersRecap(filters: Record<string, unknown>): string[] {
+  if (!filters) return [];
+  const labels: string[] = [];
+  for (const [k, v] of Object.entries(filters)) {
+    if (v == null || v === "") continue;
+    const label = k.replace(/_/g, " ");
+    if (typeof v === "boolean") {
+      labels.push(`${label}: ${v ? "yes" : "no"}`);
+    } else {
+      labels.push(`${label}: ${v}`);
+    }
+  }
+  return labels;
+}
 
 export function CreatorSearchCard({
   result,
@@ -87,66 +153,308 @@ export function CreatorSearchCard({
   result: Record<string, unknown>;
   compact: boolean;
 }) {
-  const creators = result.results as Array<Record<string, unknown>>;
+  const creators = (result.results as CreatorBrief[]) ?? [];
   const limit = compact ? 5 : 10;
+  const visible = creators.slice(0, limit);
+  const filters = (result.filters as Record<string, unknown> | undefined) ?? {};
+  const filterChips = formatFiltersRecap(filters);
 
   return (
     <div className="mt-2 rounded-lg border bg-background p-3 text-xs">
-      <div className="flex items-center justify-between mb-2">
-        <p className="font-semibold text-sm">
-          Found {String(result.count)} creators
-        </p>
-        {result.total_in_database != null &&
+      {/* Header: count + total + filter recap */}
+      <div className="mb-3 flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold">
+            Found {String(result.count)} creator
+            {Number(result.count) === 1 ? "" : "s"}
+          </p>
+          {result.total_in_database != null &&
           Number(result.total_in_database) > Number(result.count) ? (
-            <span className="text-muted-foreground">
-              {String(result.total_in_database)} total matches
+            <span className="text-[10px] text-muted-foreground">
+              {String(result.total_in_database)} matches in database
             </span>
           ) : null}
-      </div>
-      <div className="space-y-1.5">
-        {creators.slice(0, limit).map((c) => (
-          <div
-            key={String(c.id)}
-            className="flex items-center justify-between border-b pb-1.5 last:border-0 last:pb-0"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
-                {String(c.handle)?.[0]?.toUpperCase() || "?"}
-              </div>
-              <div className="min-w-0">
-                <span className="font-mono font-medium block truncate">
-                  @{String(c.handle)}
-                </span>
-                {!compact && c.display_name ? (
-                  <span className="text-muted-foreground text-[10px] block truncate">
-                    {String(c.display_name)}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 text-muted-foreground">
-              <span>
-                {((c.followers as number) / 1000).toFixed(1)}K
+        </div>
+        {filterChips.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {filterChips.map((label) => (
+              <span
+                key={label}
+                className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+              >
+                {label}
               </span>
-              <TierBadge tier={String(c.tier)} />
-              {c.cpi_score != null ? (
-                <span className="font-medium text-foreground">
-                  CPI:{String(c.cpi_score)}
-                </span>
-              ) : null}
-              {c.match_score != null ? (
-                <MatchBadge score={Number(c.match_score)} />
-              ) : null}
-            </div>
+            ))}
           </div>
+        )}
+      </div>
+
+      {/* Card grid */}
+      <div
+        className={
+          compact
+            ? "flex flex-col gap-1.5"
+            : "grid grid-cols-1 gap-2 lg:grid-cols-2"
+        }
+      >
+        {visible.map((c) => (
+          <CreatorBriefCard key={c.id} brief={c} compact={compact} />
         ))}
       </div>
+
       {creators.length > limit && (
-        <p className="text-muted-foreground mt-2 text-center">
-          +{creators.length - limit} more
+        <p className="mt-2 text-center text-muted-foreground">
+          +{creators.length - limit} more — refine the search to see them
         </p>
       )}
     </div>
+  );
+}
+
+function CreatorBriefCard({
+  brief,
+  compact,
+}: {
+  brief: CreatorBrief;
+  compact: boolean;
+}) {
+  const [campaignDialogOpen, setCampaignDialogOpen] = React.useState(false);
+
+  // Back-compat: fall back to old flat fields when scores object is missing.
+  const cpi = brief.scores?.cpi ?? brief.cpi_score ?? null;
+  const er = brief.scores?.er ?? brief.engagement_rate ?? null;
+  const brandMatch =
+    brief.scores?.brand_match ?? brief.match_score ?? null;
+  const hookQuality = brief.scores?.hook_quality ?? null;
+
+  // Compact rendering — terse line for conversation history.
+  if (compact) {
+    return (
+      <div className="flex items-center gap-2 border-b py-1 last:border-0">
+        <Avatar
+          src={brief.avatar_url}
+          alt={brief.handle ?? ""}
+          handle={brief.handle ?? "?"}
+          size={20}
+        />
+        <span className="truncate font-mono">@{brief.handle}</span>
+        {brief.tier && <TierBadge tier={brief.tier} />}
+        {brief.followers != null && (
+          <span className="text-muted-foreground">
+            {formatFollowers(brief.followers)}
+          </span>
+        )}
+        {brandMatch != null && <MatchBadge score={Number(brandMatch)} />}
+      </div>
+    );
+  }
+
+  // Full card.
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border bg-card p-3">
+      {/* Identity row */}
+      <div className="flex items-start gap-2.5">
+        <Avatar
+          src={brief.avatar_url}
+          alt={brief.handle ?? ""}
+          handle={brief.handle ?? "?"}
+          size={36}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate font-mono text-sm font-semibold">
+              @{brief.handle}
+            </span>
+            {brief.is_verified && (
+              <BadgeCheck className="size-3.5 shrink-0 text-blue-500" />
+            )}
+            {brief.platform && <PlatformPill platform={brief.platform} />}
+          </div>
+          {brief.display_name && (
+            <span className="block truncate text-[11px] text-muted-foreground">
+              {brief.display_name}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Stat chips */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {brief.tier && <TierBadge tier={brief.tier} />}
+        {brief.followers != null && (
+          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium">
+            {formatFollowers(brief.followers)}
+          </span>
+        )}
+        {cpi != null && (
+          <StatChip label="CPI" value={Math.round(Number(cpi))} />
+        )}
+        {er != null && (
+          <StatChip
+            label="ER"
+            value={`${(Number(er) <= 1 ? Number(er) * 100 : Number(er)).toFixed(1)}%`}
+          />
+        )}
+        {brandMatch != null ? (
+          <StatChip
+            label="Match"
+            value={`${Math.round(Number(brandMatch) * 100)}%`}
+            tone={
+              Number(brandMatch) >= 0.8
+                ? "success"
+                : Number(brandMatch) >= 0.6
+                  ? "warn"
+                  : "muted"
+            }
+          />
+        ) : hookQuality != null ? (
+          <StatChip
+            label="Hook"
+            value={`${Math.round(Number(hookQuality) <= 1 ? Number(hookQuality) * 100 : Number(hookQuality))}/100`}
+          />
+        ) : null}
+        {/* Similarity chip — only present on results from creator_semantic_search.
+            Indicates how well the creator matched the natural-language intent. */}
+        {brief.scores?.similarity != null && (
+          <StatChip
+            label="Sim"
+            value={`${Math.round(Number(brief.scores.similarity) * 100)}%`}
+            tone={
+              Number(brief.scores.similarity) >= 0.8
+                ? "success"
+                : Number(brief.scores.similarity) >= 0.5
+                  ? "warn"
+                  : "muted"
+            }
+          />
+        )}
+      </div>
+
+      {/* Summary (templated) */}
+      {brief.summary && (
+        <p className="text-[11px] leading-snug text-muted-foreground">
+          {brief.summary}
+        </p>
+      )}
+
+      {/* Why chip */}
+      {brief.why && (
+        <div className="flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 p-1.5 text-[10px] text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
+          <Sparkles className="size-3 shrink-0 mt-0.5" />
+          <span className="line-clamp-2">{brief.why}</span>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex gap-1.5 pt-0.5">
+        {brief.handle && (
+          <Link
+            href={`/creator/${encodeURIComponent(brief.handle)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border bg-background px-2 py-1.5 text-[11px] font-medium hover:bg-muted"
+          >
+            <ExternalLink className="size-3" />
+            Open profile
+          </Link>
+        )}
+        <button
+          type="button"
+          onClick={() => setCampaignDialogOpen(true)}
+          className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border bg-background px-2 py-1.5 text-[11px] font-medium hover:bg-muted"
+        >
+          <Plus className="size-3" />
+          Add to campaign
+        </button>
+      </div>
+
+      <AddToCampaignDialog
+        open={campaignDialogOpen}
+        onOpenChange={setCampaignDialogOpen}
+        creatorId={brief.id}
+        creatorHandle={brief.handle ?? ""}
+        matchScore={brandMatch != null ? Number(brandMatch) : null}
+      />
+    </div>
+  );
+}
+
+function Avatar({
+  src,
+  alt,
+  handle,
+  size,
+}: {
+  src: string | null;
+  alt: string;
+  handle: string;
+  size: number;
+}) {
+  // eslint-disable-next-line @next/next/no-img-element
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={alt}
+        width={size}
+        height={size}
+        className="shrink-0 rounded-full object-cover"
+        style={{ width: size, height: size }}
+        loading="lazy"
+      />
+    );
+  }
+  return (
+    <div
+      className="flex shrink-0 items-center justify-center rounded-full bg-primary/10 font-semibold text-primary"
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.max(10, Math.round(size / 2.5)),
+      }}
+    >
+      {handle?.[0]?.toUpperCase() || "?"}
+    </div>
+  );
+}
+
+function PlatformPill({ platform }: { platform: "instagram" | "youtube" }) {
+  const cls =
+    platform === "youtube"
+      ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+      : "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400";
+  const label = platform === "youtube" ? "YT" : "IG";
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded px-1 py-0.5 text-[9px] font-bold ${cls}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function StatChip({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string | number;
+  tone?: "success" | "warn" | "muted";
+}) {
+  const color =
+    tone === "success"
+      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+      : tone === "warn"
+        ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+        : "bg-muted text-foreground";
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${color}`}
+    >
+      <span className="text-muted-foreground">{label}</span>
+      <span className="tabular-nums">{value}</span>
+    </span>
   );
 }
 

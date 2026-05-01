@@ -59,7 +59,19 @@ export function ContentViewerDialog({ item, onClose }: ContentViewerDialogProps)
   }
 
   const isIg = item.kind === "ig_post";
+  const isShort = item.kind === "yt_video" && item.is_short;
   const embed = isIg ? igEmbedSrc(item) : ytEmbedSrc(item);
+  // YT Shorts are vertical (9:16); regular YT is 16:9; IG posts are ~1:1.2.
+  const embedAspect = isIg ? "1 / 1.2" : isShort ? "9 / 16" : "16 / 9";
+  // Shorts get a narrow dialog with vertical stacking (embed top, metadata
+  // below) to mirror YouTube's native Shorts viewer. IG and regular YT use
+  // the wider horizontal split.
+  //
+  // The sm: prefix is REQUIRED — the shadcn Dialog ships `sm:max-w-sm`
+  // baked into its base styles (~384px). Without `sm:` here, tailwind-merge
+  // applies our value at the base breakpoint only and the dialog clamps
+  // to 384px from sm: upward.
+  const dialogMaxW = isShort ? "sm:max-w-md" : isIg ? "sm:max-w-3xl" : "sm:max-w-5xl";
   const externalUrl = item.url ?? null;
   const title = isIg
     ? item.description?.split("\n")[0] ?? "Instagram post"
@@ -74,13 +86,31 @@ export function ContentViewerDialog({ item, onClose }: ContentViewerDialogProps)
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0">
+      <DialogContent className={`${dialogMaxW} max-h-[92vh] overflow-hidden flex flex-col gap-0 p-0`}>
         <DialogTitle className="sr-only">{title}</DialogTitle>
-        <div className="flex flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
+        <div
+          className={
+            isShort
+              ? "flex flex-1 flex-col overflow-y-auto"
+              : "flex flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden"
+          }
+        >
           {/* Embed / preview */}
-          <div className="bg-black md:w-3/5 md:flex-shrink-0">
+          <div
+            className={
+              isShort
+                ? "bg-black flex items-center justify-center"
+                : "bg-black flex items-center justify-center md:w-3/5 md:flex-shrink-0"
+            }
+          >
             {embed ? (
-              <div className="relative w-full" style={{ aspectRatio: isIg ? "1 / 1.2" : "16 / 9" }}>
+              <div
+                className="relative w-full mx-auto"
+                style={{
+                  aspectRatio: embedAspect,
+                  maxWidth: isShort ? "300px" : undefined,
+                }}
+              >
                 <iframe
                   src={embed}
                   title={title}

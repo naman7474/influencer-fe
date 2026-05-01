@@ -197,7 +197,9 @@ describe("extractHighlights", () => {
         {
           toolCallId: "tc-1",
           toolName: "creator_search",
-          output: { results: [], count: 0 },
+          // Non-empty so the highlight isn't dropped by the empty-results
+          // filter — see "drops empty creators_found highlights" below.
+          output: { results: [{ handle: "creator_a" }], count: 1 },
         },
         {
           toolCallId: "tc-2",
@@ -215,14 +217,22 @@ describe("extractHighlights", () => {
 
   it("supports legacy state 'result' for backward compat", () => {
     const h = extractHighlights(
-      singleTool("creator_search", { results: [], count: 0 }, "result")
+      singleTool(
+        "creator_search",
+        { results: [{ handle: "creator_a" }], count: 1 },
+        "result",
+      ),
     );
     expect(h).toHaveLength(1);
   });
 
   it("supports legacy state 'output' for backward compat", () => {
     const h = extractHighlights(
-      singleTool("creator_search", { results: [], count: 0 }, "output")
+      singleTool(
+        "creator_search",
+        { results: [{ handle: "creator_a" }], count: 1 },
+        "output",
+      ),
     );
     expect(h).toHaveLength(1);
   });
@@ -494,22 +504,37 @@ describe("buildLabels coverage", () => {
   });
 
   it("competitor_mapper maps to creators_found", () => {
-    const output = { results: [], count: 0 };
+    const output = { results: [{ handle: "rival" }], count: 1 };
     const h = extractHighlights(singleTool("competitor_mapper", output));
     expect(h[0].kind).toBe("creators_found");
-    expect(h[0].title).toBe("Found 0 competitor creators");
+    expect(h[0].title).toBe("Found 1 competitor creators");
   });
 
   it("geo_opportunity_finder maps to creators_found", () => {
-    const output = { results: [], count: 0 };
+    const output = { results: [{ handle: "neighbour" }], count: 1 };
     const h = extractHighlights(singleTool("geo_opportunity_finder", output));
-    expect(h[0].title).toBe("Found 0 geo opportunities");
+    expect(h[0].title).toBe("Found 1 geo opportunities");
   });
 
   it("audience_overlap_check maps to creators_found", () => {
-    const output = { results: [], count: 0 };
+    const output = { results: [{ handle: "overlap1" }], count: 1 };
     const h = extractHighlights(singleTool("audience_overlap_check", output));
-    expect(h[0].title).toBe("Found 0 overlap matches");
+    expect(h[0].title).toBe("Found 1 overlap matches");
+  });
+
+  it("drops empty creators_found highlights (UX cleanup)", () => {
+    // Empty intermediate searches shouldn't surface as highlight pills —
+    // the agent's text response covers the "no matches" case, and showing
+    // a "Found 0 creators" pill is noise.
+    const output = { results: [], count: 0 };
+    const h = extractHighlights(singleTool("creator_search", output));
+    expect(h).toHaveLength(0);
+  });
+
+  it("drops empty creator_semantic_search highlights too", () => {
+    const output = { results: [], count: 0 };
+    const h = extractHighlights(singleTool("creator_semantic_search", output));
+    expect(h).toHaveLength(0);
   });
 
   it("approval_pending label from generic tool", () => {
@@ -563,7 +588,13 @@ describe("buildLabels coverage", () => {
   it("handles multiple messages with multiple tool parts", () => {
     const msgs: UIMessage[] = [
       makeToolMessage([
-        { toolCallId: "tc-1", toolName: "creator_search", output: { results: [], count: 0 } },
+        {
+          toolCallId: "tc-1",
+          toolName: "creator_search",
+          // Non-empty — empty creators_found results are intentionally
+          // dropped from the pill list, see the dedicated test below.
+          output: { results: [{ handle: "x" }], count: 1 },
+        },
       ]),
       makeToolMessage([
         { toolCallId: "tc-2", toolName: "outreach_drafter", output: { subject: "Hi", creator_handle: "test" } },

@@ -95,10 +95,22 @@ export async function runAgent(params: AgentRuntimeParams) {
       : null;
   const modelSelection = selectModel(complexity, modelOverride);
 
+  // Anthropic prompt caching — attach cache_control to the system prompt
+  // so Anthropic caches it across requests in this session. Cached input
+  // is billed at 10% of the normal rate. The AI SDK forwards `providerOptions`
+  // verbatim to the Anthropic provider's request body.
+  // Doc: https://docs.anthropic.com/claude/docs/prompt-caching
+  const cachedSystemMessage: ModelMessage = {
+    role: "system",
+    content: systemPrompt,
+    providerOptions: {
+      anthropic: { cacheControl: { type: "ephemeral" } },
+    },
+  };
+
   const result = streamText({
     model: anthropic(modelSelection.modelId),
-    system: systemPrompt,
-    messages,
+    messages: [cachedSystemMessage, ...messages],
     tools: activeTools,
     stopWhen: stepCountIs(maxSteps),
     temperature: Number(agentConfig.temperature) || modelSelection.temperature,

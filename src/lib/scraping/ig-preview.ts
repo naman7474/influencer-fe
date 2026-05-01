@@ -172,6 +172,13 @@ export async function getIgPreview(handle: string): Promise<{
   const cleanHandle = handle.replace(/^@/, "").trim().toLowerCase();
   if (!cleanHandle) return { data: null, error: "No handle provided" };
 
+  // Provider routing — same env flag the Python pipeline reads.
+  const provider = (process.env.SCRAPER_PROVIDER || "brightdata").toLowerCase();
+  if (provider === "apify") {
+    const { getIgPreviewApify } = await import("./ig-preview-apify");
+    return getIgPreviewApify(cleanHandle);
+  }
+
   const profileUrl = `https://www.instagram.com/${cleanHandle}/`;
 
   try {

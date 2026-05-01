@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Send } from "lucide-react";
+import { Plus, Send, ExternalLink } from "lucide-react";
 
 import type { CreatorBrandMatch } from "@/lib/types/database";
 import type {
@@ -79,10 +79,21 @@ export function CreatorDetailView({
 
   const pivotItems: PlatformPivotItem[] = ALL_PLATFORMS.map((platform) => {
     const profile = profilesByPlatform.get(platform);
+    // Fall back to constructing a profile URL from the handle when the DB
+    // didn't capture one (older rows). YT supports both /@handle and
+    // /channel/<id>; we prefer the explicit profile_url, then the
+    // canonical channel URL, then handle-based.
+    const constructedUrl = profile?.handle
+      ? platform === "instagram"
+        ? `https://www.instagram.com/${profile.handle}/`
+        : `https://www.youtube.com/@${profile.handle}`
+      : null;
     return {
       platform,
       followers: profile?.followers_or_subs ?? null,
       available: !!profile,
+      profileUrl: profile?.profile_url ?? constructedUrl,
+      handle: profile?.handle ?? null,
     };
   });
 
@@ -125,16 +136,23 @@ export function CreatorDetailView({
     <div className="flex h-full flex-col gap-5 overflow-y-auto pb-6">
       {/* Creator header — minimal: avatar, name, niches, header score */}
       <header className="flex flex-wrap items-center gap-4 px-2 pt-1">
-        {detail.creator.avatar_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={detail.creator.avatar_url}
-            alt=""
-            className="h-16 w-16 shrink-0 rounded-2xl border-[3px] border-card object-cover shadow-md"
-          />
-        ) : (
-          <div className="h-16 w-16 shrink-0 rounded-2xl border-[3px] border-card bg-canva-purple-soft shadow-md" />
-        )}
+        {(() => {
+          // Avatar source priority: canonical creators.avatar_url, then the
+          // active platform's social_profile.avatar_url (covers YT-only
+          // creators where the canonical column hasn't been backfilled).
+          const avatarSrc =
+            detail.creator.avatar_url ?? activeProfile?.avatar_url ?? null;
+          return avatarSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={avatarSrc}
+              alt=""
+              className="h-16 w-16 shrink-0 rounded-2xl border-[3px] border-card object-cover shadow-md"
+            />
+          ) : (
+            <div className="h-16 w-16 shrink-0 rounded-2xl border-[3px] border-card bg-canva-purple-soft shadow-md" />
+          );
+        })()}
         <div className="min-w-0 flex-1">
           <h1 className="font-heading text-[22px] font-extrabold leading-tight tracking-tight text-foreground">
             {detail.creator.display_name ?? detail.creator.handle}
@@ -149,6 +167,42 @@ export function CreatorDetailView({
                   {tag}
                 </span>
               ))}
+            </div>
+          )}
+          {/* Platform profile links — visible chips that open the creator's
+              IG / YT page in a new tab. Driven by pivotItems so the same
+              URL-construction logic is shared with the platform pivot. */}
+          {pivotItems.some((p) => p.available && p.profileUrl) && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {pivotItems.map((p) => {
+                if (!p.available || !p.profileUrl) return null;
+                const meta = {
+                  instagram: { label: "Instagram", mark: "IG", bg: "var(--gradient-instagram)" },
+                  youtube: { label: "YouTube", mark: "YT", bg: "var(--yt)" },
+                }[p.platform];
+                return (
+                  <a
+                    key={p.platform}
+                    href={p.profileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`Open on ${meta.label}`}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2 py-0.5 text-[11px] font-bold text-foreground transition-colors hover:border-canva-purple/40 hover:bg-canva-purple-soft hover:text-canva-purple"
+                  >
+                    <span
+                      aria-hidden
+                      className="grid h-4 w-4 place-items-center rounded text-[8px] font-extrabold text-white"
+                      style={{ background: meta.bg }}
+                    >
+                      {meta.mark}
+                    </span>
+                    <span className="truncate max-w-[160px]">
+                      {p.handle ? `@${p.handle}` : meta.label}
+                    </span>
+                    <ExternalLink className="size-3" />
+                  </a>
+                );
+              })}
             </div>
           )}
         </div>

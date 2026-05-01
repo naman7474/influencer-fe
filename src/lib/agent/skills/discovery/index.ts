@@ -5,6 +5,7 @@
 import { registerSkills } from "../registry";
 import type { SkillDefinition } from "../types";
 import { creatorSearchTool } from "./creator-search";
+import { creatorSemanticSearchTool } from "./creator-semantic-search";
 import { getCreatorDetailsTool } from "./get-creator-details";
 import { lookalikeFinder } from "./lookalike-finder";
 import { competitorMapperTool } from "./competitor-mapper";
@@ -19,6 +20,13 @@ const skills: SkillDefinition[] = [
     permission: "can_search_creators",
     riskLevel: "low",
     factory: creatorSearchTool,
+  },
+  {
+    name: "creator_semantic_search",
+    category: "discovery",
+    permission: "can_search_creators",
+    riskLevel: "low",
+    factory: creatorSemanticSearchTool,
   },
   {
     name: "get_creator_details",
@@ -67,6 +75,7 @@ const skills: SkillDefinition[] = [
 registerSkills(skills);
 
 export { creatorSearchTool } from "./creator-search";
+export { creatorSemanticSearchTool } from "./creator-semantic-search";
 export { getCreatorDetailsTool } from "./get-creator-details";
 export { lookalikeFinder } from "./lookalike-finder";
 export { competitorMapperTool } from "./competitor-mapper";

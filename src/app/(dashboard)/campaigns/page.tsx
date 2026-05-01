@@ -1,6 +1,10 @@
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { getCampaigns, getCampaignCreators, getStatusCounts } from "@/lib/queries/campaigns";
+import {
+  getCampaigns,
+  getCreatorsForCampaigns,
+  getStatusCounts,
+} from "@/lib/queries/campaigns";
 import { CampaignsPageClient } from "./campaigns-page-client";
 
 export default async function CampaignsPage() {
@@ -43,27 +47,32 @@ export default async function CampaignsPage() {
     declined: 6,
   };
 
-  await Promise.all(
-    campaigns.map(async (c) => {
-      const creators = await getCampaignCreators(supabase, c.id);
-      const avatars = [...creators]
-        .sort(
-          (a, b) =>
-            (AVATAR_PRIORITY[a.status] ?? 99) -
-            (AVATAR_PRIORITY[b.status] ?? 99),
-        )
-        .slice(0, 5)
-        .map((cc) => ({
-          handle: cc.creator.handle,
-          avatar_url: cc.creator.avatar_url,
-        }));
-      campaignMeta[c.id] = {
-        count: creators.length,
-        statusCounts: getStatusCounts(creators),
-        avatars,
-      };
-    }),
+  // Single batched query for all campaigns' creators — replaces an
+  // N+1 (one query per campaign). At 50 campaigns this used to be 50
+  // serial round-trips; now it's one.
+  const creatorsByCampaign = await getCreatorsForCampaigns(
+    supabase,
+    campaigns.map((c) => c.id),
   );
+  for (const c of campaigns) {
+    const creators = creatorsByCampaign[c.id] ?? [];
+    const avatars = [...creators]
+      .sort(
+        (a, b) =>
+          (AVATAR_PRIORITY[a.status] ?? 99) -
+          (AVATAR_PRIORITY[b.status] ?? 99),
+      )
+      .slice(0, 5)
+      .map((cc) => ({
+        handle: cc.creator.handle,
+        avatar_url: cc.creator.avatar_url,
+      }));
+    campaignMeta[c.id] = {
+      count: creators.length,
+      statusCounts: getStatusCounts(creators),
+      avatars,
+    };
+  }
 
   return (
     <CampaignsPageClient
