@@ -27,6 +27,7 @@ export interface DashboardStats {
 interface DashboardClientProps {
   brand: Brand;
   stats: DashboardStats;
+  userDisplayName?: string | null;
 }
 
 function getGreeting(): string {
@@ -83,7 +84,7 @@ interface StatTile {
   accent: string;
 }
 
-export function DashboardClient({ brand, stats }: DashboardClientProps) {
+export function DashboardClient({ brand, stats, userDisplayName }: DashboardClientProps) {
   const [greeting, setGreeting] = useState("Welcome");
 
   useEffect(() => {
@@ -126,9 +127,14 @@ export function DashboardClient({ brand, stats }: DashboardClientProps) {
       {/* Welcome banner */}
       <section>
         <h1 className="font-heading text-2xl font-extrabold tracking-tight text-foreground md:text-3xl">
-          {greeting}, {brand.brand_name}
+          {greeting}, {userDisplayName ?? brand.brand_name}
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        {userDisplayName && (
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {brand.brand_name}
+          </p>
+        )}
+        <p className="mt-2 text-sm text-muted-foreground">
           What would you like to do today?
         </p>
       </section>

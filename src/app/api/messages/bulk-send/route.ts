@@ -161,6 +161,7 @@ export async function POST(request: NextRequest) {
               campaign_id: campaign_id || null,
               outreach_status: "sent",
               last_message_direction: "outbound",
+              last_message_channel: "email",
               last_message_at: nowIso,
             } as never)
             .select("id")
@@ -221,6 +222,7 @@ export async function POST(request: NextRequest) {
             campaign_id: campaign_id || null,
             thread_id: threadId,
             channel: "email",
+            direction: "outbound",
             status: "sending",
             subject: recipient.subject,
             body: fullHtml,
@@ -229,6 +231,7 @@ export async function POST(request: NextRequest) {
             template_id: recipient.template_id || null,
             drafted_by: "human",
             sender_name: senderName,
+            sent_by_user_id: user.id,
           } as never)
           .select("id")
           .maybeSingle();
@@ -280,6 +283,7 @@ export async function POST(request: NextRequest) {
             last_message_at: new Date().toISOString(),
             last_message_preview: stripHtml(recipient.body_html).substring(0, 100),
             last_message_direction: "outbound",
+            last_message_channel: "email",
             outreach_status: "sent",
           } as never)
           .eq("id", threadId);

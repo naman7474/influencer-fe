@@ -276,3 +276,25 @@ export function parseAudienceIntel(
     ? { kind: "ok", data: result.data }
     : { kind: "error", reason: "audience_intelligence:schema_mismatch", details: result.error.issues };
 }
+
+// ── Niche enum (single source of truth, mirrors Python side) ──────────
+//
+// Mirror of CAPTION_NICHES in pipeline/llm_captions.py. Both creator
+// caption classification and brand niche classification must stay
+// inside this enum so computeNicheFit can compare apples to apples.
+export const NICHE_ENUM = [
+  "beauty",
+  "fashion",
+  "lifestyle",
+  "tech",
+  "food",
+  "fitness",
+  "travel",
+  "education",
+  "entertainment",
+  "parenting",
+  "health",
+  "finance",
+] as const;
+
+export type Niche = (typeof NICHE_ENUM)[number];

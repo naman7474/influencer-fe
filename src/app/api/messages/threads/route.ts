@@ -95,8 +95,49 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Bulk-fetch match scores for the creators in this page of threads.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const threadList = (threads || []) as any[];
+    const creatorIds = Array.from(
+      new Set(threadList.map((t) => t.creators?.id).filter(Boolean) as string[])
+    );
+
+    const scoreByCreator = new Map<string, number>();
+    if (creatorIds.length) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: matches } = await (supabase as any)
+        .from("creator_brand_matches")
+        .select("creator_id, match_score")
+        .eq("brand_id", brand.id)
+        .in("creator_id", creatorIds);
+
+      // creator_brand_matches is keyed by (creator, brand, platform) so a
+      // creator can have multiple rows. Take the highest. Also: match_score
+      // is stored as either 0-1 (decimal) or 0-100 (percent) depending on
+      // the pipeline run — normalize to 0-100 for display.
+      for (const m of (matches ?? []) as Array<{
+        creator_id: string;
+        match_score: number | null;
+      }>) {
+        if (m.match_score == null) continue;
+        const raw = Number(m.match_score);
+        const normalized = raw <= 1 ? raw * 100 : raw;
+        const prev = scoreByCreator.get(m.creator_id);
+        if (prev == null || normalized > prev) {
+          scoreByCreator.set(m.creator_id, normalized);
+        }
+      }
+    }
+
+    const enriched = threadList.map((t) => ({
+      ...t,
+      match_score: t.creators?.id
+        ? scoreByCreator.get(t.creators.id) ?? null
+        : null,
+    }));
+
     return NextResponse.json({
-      threads: threads || [],
+      threads: enriched,
       total: count || 0,
       page,
       limit,

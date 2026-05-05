@@ -103,8 +103,29 @@ export async function GET(
       replies = replyData || [];
     }
 
+    // Match score for this creator + brand. Multiple rows possible (one per
+    // platform); pick the highest. match_score may be stored as 0-1 or 0-100
+    // depending on pipeline run — normalize to 0-100.
+    let matchScore: number | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const creatorId = (thread as any)?.creators?.id;
+    if (creatorId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: matches } = await (supabase as any)
+        .from("creator_brand_matches")
+        .select("match_score")
+        .eq("brand_id", brand.id)
+        .eq("creator_id", creatorId);
+      for (const m of (matches ?? []) as Array<{ match_score: number | null }>) {
+        if (m.match_score == null) continue;
+        const raw = Number(m.match_score);
+        const normalized = raw <= 1 ? raw * 100 : raw;
+        if (matchScore == null || normalized > matchScore) matchScore = normalized;
+      }
+    }
+
     return NextResponse.json({
-      thread,
+      thread: { ...(thread as object), match_score: matchScore },
       messages: messages || [],
       replies,
     });

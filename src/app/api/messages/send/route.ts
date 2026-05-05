@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { sendEmail } from "@/lib/gmail";
+import { sendOutreachMessage } from "@/lib/outreach/send";
 import { insertTrackingPixel, buildEmailHtml } from "@/lib/outreach/email-sender";
 import { checkSendLimits } from "@/lib/outreach/rate-limiter";
 
@@ -49,12 +49,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Brand profile not found." }, { status: 404 });
     }
 
-    if (!brand.gmail_connected || !brand.gmail_email) {
-      return NextResponse.json(
-        { error: "Gmail is not connected. Please connect Gmail in Settings." },
-        { status: 400 }
-      );
-    }
+    // (Channel-specific connection checks are enforced at send time.)
 
     const body = await request.json();
     const {
@@ -64,26 +59,39 @@ export async function POST(request: NextRequest) {
       body_html,
       template_id,
       recipient_email,
+      recipient_ig_id,
       thread_id: existingThreadId,
       reply_to_message_id,
       gmail_thread_id,
+      channel = "email",
     } = body as {
       creator_id: string;
       campaign_id?: string;
       subject: string;
       body_html: string;
       template_id?: string;
-      recipient_email: string;
+      recipient_email?: string;
+      recipient_ig_id?: string;
       thread_id?: string;
       reply_to_message_id?: string;
       gmail_thread_id?: string;
+      channel?: "email" | "instagram_dm";
     };
 
-    if (!creator_id || !subject || !body_html || !recipient_email) {
-      return NextResponse.json(
-        { error: "Missing required fields: creator_id, subject, body_html, recipient_email." },
-        { status: 400 }
-      );
+    if (channel === "email") {
+      if (!creator_id || !subject || !body_html || !recipient_email) {
+        return NextResponse.json(
+          { error: "Missing required fields: creator_id, subject, body_html, recipient_email." },
+          { status: 400 }
+        );
+      }
+    } else if (channel === "instagram_dm") {
+      if (!creator_id || !body_html || !recipient_ig_id) {
+        return NextResponse.json(
+          { error: "Missing required fields: creator_id, body_html, recipient_ig_id." },
+          { status: 400 }
+        );
+      }
     }
 
     // Check rate limits
@@ -137,6 +145,7 @@ export async function POST(request: NextRequest) {
             campaign_id: campaign_id || null,
             outreach_status: "sent",
             last_message_direction: "outbound",
+            last_message_channel: channel,
           } as never)
           .select("id")
           .single();
@@ -151,6 +160,97 @@ export async function POST(request: NextRequest) {
         }
         threadId = newThread.id;
       }
+    }
+
+    // ── Instagram DM fast path ────────────────────────────────
+    if (channel === "instagram_dm") {
+      const plain = body_html.replace(/<[^>]*>/g, "");
+
+      const igSenderName =
+        brand.email_sender_name ||
+        (user.user_metadata as { full_name?: string })?.full_name ||
+        "Team";
+
+      const { data: igMsgRow, error: igInsertError } = await supabase
+        .from("outreach_messages")
+        .insert({
+          brand_id: brand.id,
+          creator_id,
+          campaign_id: campaign_id || null,
+          thread_id: threadId,
+          channel: "instagram_dm",
+          direction: "outbound",
+          status: "queued",
+          body: plain,
+          drafted_by: "human",
+          sender_name: igSenderName,
+          sent_by_user_id: user.id,
+        } as never)
+        .select("id")
+        .single();
+
+      const igMsg = igMsgRow as { id: string } | null;
+      if (igInsertError || !igMsg) {
+        return NextResponse.json(
+          { error: "Failed to create message." },
+          { status: 500 }
+        );
+      }
+
+      const sendRes = await sendOutreachMessage({
+        channel: "instagram_dm",
+        brandId: brand.id,
+        to: recipient_ig_id!,
+        body: plain,
+      });
+
+      if (!sendRes.ok) {
+        await supabase
+          .from("outreach_messages")
+          .update({
+            status: "failed",
+            failed_at: new Date().toISOString(),
+            error_message: sendRes.error,
+          } as never)
+          .eq("id", igMsg.id);
+        return NextResponse.json({ error: sendRes.error }, { status: 500 });
+      }
+
+      await supabase
+        .from("outreach_messages")
+        .update({
+          status: "sent",
+          sent_at: new Date().toISOString(),
+          provider_message_id: sendRes.provider_message_id,
+        } as never)
+        .eq("id", igMsg.id);
+
+      await supabase
+        .from("message_threads")
+        .update({
+          last_message_at: new Date().toISOString(),
+          last_message_preview: plain.substring(0, 100),
+          last_message_direction: "outbound",
+          last_message_channel: "instagram_dm",
+          outreach_status: "sent",
+          campaign_id: campaign_id || null,
+        } as never)
+        .eq("id", threadId);
+
+      return NextResponse.json({
+        success: true,
+        message_id: igMsg.id,
+        thread_id: threadId,
+        channel: "instagram_dm",
+      });
+    }
+
+    // ── Email path (existing flow) ────────────────────────────
+    if (!brand.gmail_connected || !brand.gmail_email) {
+      return NextResponse.json(
+        { error: "Gmail is not connected. Please connect Gmail in Settings." },
+        { status: 400 }
+      );
     }
 
     // Build full email HTML
@@ -174,6 +274,7 @@ export async function POST(request: NextRequest) {
         campaign_id: campaign_id || null,
         thread_id: threadId,
         channel: "email",
+        direction: "outbound",
         status: "sending",
         subject,
         body: brand.email_include_tracking
@@ -184,6 +285,7 @@ export async function POST(request: NextRequest) {
         template_id: template_id || null,
         drafted_by: "human",
         sender_name: senderName,
+        sent_by_user_id: user.id,
       } as never)
       .select("id")
       .single();
@@ -206,10 +308,12 @@ export async function POST(request: NextRequest) {
         .eq("id", message.id);
     }
 
-    // Send via Composio Gmail
+    // Send via Gmail
     try {
-      const gmailResponse = await sendEmail(brand.id, {
-        to: recipient_email,
+      const sendRes = await sendOutreachMessage({
+        channel: "email",
+        brandId: brand.id,
+        to: recipient_email!,
         subject,
         body: brand.email_include_tracking
           ? insertTrackingPixel(fullHtml, message.id)
@@ -217,6 +321,7 @@ export async function POST(request: NextRequest) {
         replyToMessageId: reply_to_message_id,
         threadId: gmail_thread_id,
       });
+      if (!sendRes.ok) throw new Error(sendRes.error);
 
       // Update message with Gmail metadata
       await supabase
@@ -224,8 +329,8 @@ export async function POST(request: NextRequest) {
         .update({
           status: "sent",
           sent_at: new Date().toISOString(),
-          resend_message_id: gmailResponse.messageId,
-          gmail_thread_id: gmailResponse.threadId,
+          resend_message_id: sendRes.provider_message_id,
+          gmail_thread_id: sendRes.provider_thread_id,
         } as never)
         .eq("id", message.id);
 
@@ -236,6 +341,7 @@ export async function POST(request: NextRequest) {
           last_message_at: new Date().toISOString(),
           last_message_preview: body_html.replace(/<[^>]*>/g, "").substring(0, 100),
           last_message_direction: "outbound",
+          last_message_channel: "email",
           outreach_status: "sent",
           campaign_id: campaign_id || null,
         } as never)

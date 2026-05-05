@@ -91,7 +91,7 @@ export default function DiscoverPage() {
   const [filters, setFilters] = useState<DiscoveryFilters>({
     ...DEFAULT_FILTERS,
   });
-  const [sort, setSort] = useState<SortOption>("cpi");
+  const [sort, setSort] = useState<SortOption>("brand_match");
   const [creators, setCreators] = useState<LeaderboardWithPlatform[]>([]);
   const [extras, setExtras] = useState<Map<string, CreatorExtras>>(new Map());
   const [hasMore, setHasMore] = useState(false);

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import type { Brand } from "@/lib/types/database";
 import {
@@ -16,6 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { InstagramIntegrationCard } from "@/components/settings/instagram-integration-card";
+import { DisplayNameCard } from "@/components/settings/display-name-card";
 import {
   Select,
   SelectContent,
@@ -49,6 +52,7 @@ import {
   Trash2,
   Upload,
   User,
+  Users,
   X,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -523,6 +527,16 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
             </button>
           );
         })}
+        <Link
+          href="/settings/team"
+          className={cn(
+            "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors text-left",
+            "text-muted-foreground hover:text-foreground hover:bg-muted"
+          )}
+        >
+          <Users className="size-4 shrink-0" />
+          Team
+        </Link>
       </nav>
 
       {/* ── Mobile dropdown (visible below md) ─────────────────── */}
@@ -548,6 +562,8 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
       {/*  Workspace (Profile + Preferences + Account)                    */}
       {/* ============================================================= */}
       {activeSection === "workspace" && (
+        <div className="flex flex-col gap-6">
+        <DisplayNameCard />
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -671,6 +687,7 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
             </div>
           </CardContent>
         </Card>
+        </div>
       )}
 
       {/* ============================================================= */}
@@ -936,6 +953,23 @@ export function SettingsClient({ brand, userEmail }: SettingsClientProps) {
           </CardHeader>
           <CardContent>
             <GmailIntegrationCard brand={brand} />
+          </CardContent>
+        </Card>
+
+        {/* Instagram Integration */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Plug className="size-4 text-primary" />
+              Instagram
+            </CardTitle>
+            <CardDescription>
+              Connect a Business or personal Instagram account to sync DMs and
+              reply from the outreach inbox.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <InstagramIntegrationCard />
           </CardContent>
         </Card>
         </div>

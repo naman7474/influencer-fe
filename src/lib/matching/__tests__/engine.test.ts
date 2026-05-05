@@ -86,6 +86,87 @@ describe("computeNicheFit", () => {
       1.0
     );
   });
+
+  // ── Post-2026-05-02: 12-niche enum coverage ──────────────────────────
+
+  it("scores education ↔ tech adjacency (was 0.0 before NICHE_ADJACENCY extension)", () => {
+    expect(computeNicheFit("education", null, ["tech"])).toBe(0.5);
+  });
+
+  it("scores parenting ↔ lifestyle adjacency", () => {
+    expect(computeNicheFit("parenting", null, ["lifestyle"])).toBe(0.5);
+  });
+
+  it("scores tech ↔ education adjacency (reverse direction)", () => {
+    // Physics Wallah real-world case: brand has education, creator is tech.
+    expect(computeNicheFit("tech", null, ["education"])).toBe(0.5);
+  });
+
+  // ── BrandNicheInput path (LLM-classified brand niche) ─────────────────
+
+  it("brand-niche path: primary↔primary exact = 1.0", () => {
+    const result = computeNicheFit("education", null, {
+      primary_niche: "education",
+      secondary_niche: null,
+      product_categories: [],
+    });
+    expect(result).toBe(1.0);
+  });
+
+  it("brand-niche path: primary↔secondary cross = 0.85", () => {
+    const result = computeNicheFit("tech", "education", {
+      primary_niche: "education",
+      secondary_niche: null,
+      product_categories: [],
+    });
+    expect(result).toBe(0.85);
+  });
+
+  it("brand-niche path: secondary↔primary cross = 0.85", () => {
+    const result = computeNicheFit("education", null, {
+      primary_niche: "tech",
+      secondary_niche: "education",
+      product_categories: [],
+    });
+    expect(result).toBe(0.85);
+  });
+
+  it("brand-niche path: secondary↔secondary = 0.7", () => {
+    const result = computeNicheFit("tech", "lifestyle", {
+      primary_niche: "fashion",
+      secondary_niche: "lifestyle",
+      product_categories: [],
+    });
+    expect(result).toBe(0.7);
+  });
+
+  it("brand-niche path: adjacency on either side = 0.5", () => {
+    const result = computeNicheFit("tech", null, {
+      primary_niche: "education",
+      secondary_niche: null,
+      product_categories: [],
+    });
+    expect(result).toBe(0.5);
+  });
+
+  it("brand-niche path: falls back to product_categories when niche columns null", () => {
+    // Back-compat: pre-classification brand still scores via the legacy path.
+    const result = computeNicheFit("beauty", null, {
+      primary_niche: null,
+      secondary_niche: null,
+      product_categories: ["beauty"],
+    });
+    expect(result).toBe(1.0);
+  });
+
+  it("brand-niche path: fallback path keeps adjacency working", () => {
+    const result = computeNicheFit("education", null, {
+      primary_niche: null,
+      secondary_niche: null,
+      product_categories: ["tech"],
+    });
+    expect(result).toBe(0.5);
+  });
 });
 
 // ── computeBudgetFit ──────────────────────────────────────────────────

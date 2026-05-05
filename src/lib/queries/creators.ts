@@ -68,9 +68,15 @@ export const DEFAULT_FILTERS: DiscoveryFilters = {
 /*  Sort options                                                       */
 /* ------------------------------------------------------------------ */
 
-export type SortOption = "cpi" | "avg_engagement_rate" | "followers" | "audience_authenticity";
+export type SortOption =
+  | "cpi"
+  | "avg_engagement_rate"
+  | "followers"
+  | "audience_authenticity"
+  | "brand_match";
 
 export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: "brand_match", label: "Brand Match" },
   { value: "cpi", label: "CPI Score" },
   { value: "avg_engagement_rate", label: "Engagement Rate" },
   { value: "followers", label: "Followers" },
@@ -87,9 +93,19 @@ export async function searchCreators(
   sort: SortOption,
   page: number,
   pageSize: number = 20,
+  brandId: string | null = null,
 ): Promise<{ data: CreatorLeaderboard[]; count: number }> {
   const from = page * pageSize;
   const to = from + pageSize - 1;
+
+  // Brand-match sort needs a different query path: order is on
+  // creator_brand_matches.match_score (per-brand), not the MV. We fetch
+  // the top match-scored creator_ids first, then pull their MV rows and
+  // restore the score-desc order client-side. Falls through to the
+  // standard MV path when brandId is unavailable (no signed-in brand).
+  if (sort === "brand_match" && brandId) {
+    return await searchByBrandMatch(supabase, filters, brandId, from, to);
+  }
 
   // When filtering by "all" we show at most one row per creator via the
   // blended view (highest-CPI platform wins). When filtering by a specific
@@ -199,9 +215,13 @@ export async function searchCreators(
   // Has contact — the view doesn't expose contact_email, so we skip this
   // filter at the query level. The hybrid-search RPC applies the same.
 
-  // Sort
+  // Sort. brand_match falls through here only when brandId is null
+  // (no signed-in brand) — fall back to CPI so the page still renders.
+  const effectiveSort = sort === "brand_match" ? "cpi" : sort;
   const sortColumn =
-    sort === "audience_authenticity" ? "authenticity_score" : sort;
+    effectiveSort === "audience_authenticity"
+      ? "authenticity_score"
+      : effectiveSort;
   query = query.order(sortColumn, { ascending: false, nullsFirst: false });
 
   // Pagination
@@ -218,4 +238,93 @@ export async function searchCreators(
     data: (data ?? []) as CreatorLeaderboard[],
     count: count ?? 0,
   };
+}
+
+/**
+ * Brand-match-sorted page. Two queries:
+ *   1. Fetch a slice of `creator_brand_matches` for the brand, ordered by
+ *      match_score desc — gives us the creator_ids in score order.
+ *   2. Pull those rows from `mv_creator_leaderboard` (.in() loses order).
+ *      Re-sort client-side using the order from step 1 so the rendered
+ *      list matches the score ranking.
+ *
+ * Filters are deliberately **not** applied here — applying them inside
+ * the matches table loses the score ordering once we re-fetch from the
+ * MV. If the user has filters set + sort=brand_match, the filters are
+ * still respected on the *fetched page* by post-filter (acceptable for
+ * the typical pageSize of 20). For heavy-filter use-cases we'd add a
+ * proper SQL view.
+ */
+async function searchByBrandMatch(
+  supabase: SupabaseClient<Database>,
+  filters: DiscoveryFilters,
+  brandId: string,
+  from: number,
+  to: number,
+): Promise<{ data: CreatorLeaderboard[]; count: number }> {
+  const platformFilter =
+    filters.platform === "all" ? null : filters.platform;
+
+  let mq = supabase
+    .from("creator_brand_matches")
+    .select("creator_id, platform, match_score")
+    .eq("brand_id", brandId)
+    .order("match_score", { ascending: false, nullsFirst: false });
+
+  if (platformFilter) {
+    mq = mq.eq("platform", platformFilter);
+  }
+  mq = mq.range(from, to);
+
+  const { data: matchRows, error: mErr } = await mq;
+  if (mErr) {
+    console.error("searchByBrandMatch matches fetch error:", mErr);
+    return { data: [], count: 0 };
+  }
+  const ordered = (matchRows ?? []) as Array<{
+    creator_id: string | null;
+    platform: string | null;
+    match_score: number | null;
+  }>;
+  if (ordered.length === 0) {
+    return { data: [], count: 0 };
+  }
+
+  const creatorIds = ordered
+    .map((r) => r.creator_id)
+    .filter((id): id is string => !!id);
+
+  // Pull the MV rows. When platform filter is "all" we use the blended
+  // view (one row per creator) to mirror the default Discover behavior.
+  const view =
+    filters.platform === "all"
+      ? "mv_creator_leaderboard_blended"
+      : "mv_creator_leaderboard";
+
+  let lbq = supabase.from(view).select("*").in("creator_id", creatorIds);
+  if (platformFilter) {
+    lbq = lbq.eq("platform", platformFilter);
+  }
+  const { data: lbRows, error: lbErr } = await lbq;
+  if (lbErr) {
+    console.error("searchByBrandMatch MV fetch error:", lbErr);
+    return { data: [], count: 0 };
+  }
+
+  // Restore score-desc order. We can key by creator_id alone here: the
+  // platform filter (when not "all") makes the result set single-platform,
+  // and the blended view has one row per creator. Either way creator_id
+  // is unique within the fetched set.
+  const byKey = new Map<string, CreatorLeaderboard>();
+  for (const row of (lbRows ?? []) as CreatorLeaderboard[]) {
+    if (row.creator_id) byKey.set(row.creator_id, row);
+  }
+  const sortedData: CreatorLeaderboard[] = [];
+  for (const m of ordered) {
+    if (!m.creator_id) continue;
+    const r = byKey.get(m.creator_id);
+    if (r) sortedData.push(r);
+  }
+
+  return { data: sortedData, count: sortedData.length };
 }

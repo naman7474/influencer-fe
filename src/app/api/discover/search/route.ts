@@ -73,11 +73,28 @@ export async function POST(request: NextRequest) {
 
   const searchText = (filters.search ?? "").trim();
 
+  // Resolve current user's brand id once — needed for brand-match sort,
+  // and cheap to look up regardless. Falls back to null if the user has
+  // no brand row yet (the queries layer handles null gracefully).
+  const { data: brandRow } = await supabase
+    .from("brands")
+    .select("id")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+  const brandId = (brandRow as { id: string } | null)?.id ?? null;
+
   // ── Path A: filters-only (no semantic search) ───────────────
   // The existing query builder already supports the migration-050
   // filter columns we just added — no need to reimplement.
   if (searchText.length === 0) {
-    const result = await searchCreators(supabase, filters, sort, page, pageSize);
+    const result = await searchCreators(
+      supabase,
+      filters,
+      sort,
+      page,
+      pageSize,
+      brandId,
+    );
     return NextResponse.json(
       {
         data: result.data,
@@ -104,6 +121,7 @@ export async function POST(request: NextRequest) {
       sort,
       page,
       pageSize,
+      brandId,
     );
     return NextResponse.json({
       data: result.data,

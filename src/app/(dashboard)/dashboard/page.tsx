@@ -27,6 +27,18 @@ export default async function DashboardPage() {
 
   const brand = brandRow as Brand;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: profileRow } = await (supabase as any)
+    .from("profiles")
+    .select("display_name")
+    .eq("id", user.id)
+    .maybeSingle();
+  const displayName =
+    (profileRow as { display_name: string | null } | null)?.display_name ??
+    (user.user_metadata as { full_name?: string })?.full_name ??
+    user.email?.split("@")[0] ??
+    null;
+
   const [
     activeCampaignsRes,
     pendingApprovalsRes,
@@ -62,5 +74,5 @@ export default async function DashboardPage() {
     contentLive: contentLiveRes.count ?? 0,
   };
 
-  return <DashboardClient brand={brand} stats={stats} />;
+  return <DashboardClient brand={brand} stats={stats} userDisplayName={displayName} />;
 }

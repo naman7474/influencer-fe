@@ -15,6 +15,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { ThreadAssignee } from "@/components/outreach/thread-assignee";
+import { MatchScoreChip } from "@/components/outreach/match-score-chip";
 import { cn } from "@/lib/utils";
 
 interface Message {
@@ -23,7 +25,9 @@ interface Message {
   body: string;
   status: string;
   channel: string;
+  direction?: "outbound" | "inbound";
   sender_name: string | null;
+  sent_by_user_id?: string | null;
   from_email: string | null;
   recipient_email: string | null;
   resend_message_id: string | null;
@@ -49,6 +53,8 @@ interface ThreadData {
     subject: string | null;
     outreach_status: string;
     campaign_id: string | null;
+    assigned_to_user_id: string | null;
+    match_score: number | null;
     creators: {
       id: string;
       handle: string;
@@ -214,6 +220,7 @@ export function MessageDetail({ threadId, brand, onBack, onThreadUpdate }: Props
                 {creator.tier}
               </Badge>
             )}
+            <MatchScoreChip score={thread.match_score} />
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             {creator.display_name && <span>{creator.display_name}</span>}
@@ -231,6 +238,11 @@ export function MessageDetail({ threadId, brand, onBack, onThreadUpdate }: Props
             )}
           </div>
         </div>
+
+        <ThreadAssignee
+          threadId={thread.id}
+          initialAssigneeId={thread.assigned_to_user_id}
+        />
 
         <Button
           variant="ghost"
@@ -267,7 +279,14 @@ export function MessageDetail({ threadId, brand, onBack, onThreadUpdate }: Props
                       />
                     </div>
                     <div className="flex items-center gap-2 mt-1 justify-end text-[10px] text-muted-foreground px-1">
-                      <span className="font-medium">You</span>
+                      {msg.channel === "instagram_dm" && (
+                        <Badge variant="outline" className="text-[9px] py-0 px-1.5">
+                          IG
+                        </Badge>
+                      )}
+                      <span className="font-medium">
+                        {msg.sender_name ?? "You"}
+                      </span>
                       <span>·</span>
                       <span>
                         {msg.sent_at

@@ -107,6 +107,7 @@ export async function POST(request: NextRequest) {
         campaign_id: campaign_id || null,
         thread_id: threadId,
         channel: "email",
+        direction: "outbound",
         status: "draft",
         subject: subject || null,
         body: body_html,
@@ -115,6 +116,7 @@ export async function POST(request: NextRequest) {
         template_id: template_id || null,
         drafted_by: "human",
         sender_name: senderName,
+        sent_by_user_id: user.id,
       } as never)
       .select("id")
       .single();

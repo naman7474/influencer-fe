@@ -48,11 +48,19 @@ export const NICHE_ADJACENCY: Record<string, string[]> = {
   beauty: ["skincare", "fashion", "lifestyle"],
   fitness: ["wellness", "health", "food"],
   food: ["health", "lifestyle", "fitness"],
-  tech: ["gadgets", "lifestyle"],
+  tech: ["gadgets", "lifestyle", "education", "finance"],
   fashion: ["beauty", "lifestyle"],
   wellness: ["fitness", "health", "beauty"],
   skincare: ["beauty", "wellness"],
   lifestyle: ["fashion", "beauty", "food"],
+  // Mirrors the 12-niche enum in pipeline/llm_captions.py:26.
+  education: ["tech", "lifestyle", "parenting"],
+  edtech: ["education", "tech"],
+  parenting: ["lifestyle", "education", "health"],
+  finance: ["tech", "lifestyle"],
+  travel: ["lifestyle", "food"],
+  entertainment: ["lifestyle", "tech"],
+  health: ["fitness", "wellness", "food"],
 };
 
 export const TIER_RATES: Record<CreatorTier, [number, number]> = {
@@ -65,40 +73,105 @@ export const TIER_RATES: Record<CreatorTier, [number, number]> = {
 
 /**
  * Weights for composite score (used when brand has NO IG analysis).
- * Note: price/budget tier was removed (no pricing data in product). The
- * old 0.15 budget weight was redistributed proportionally to the four
- * remaining factors so weights still sum to 1.0. `price_tier_score` is
- * still computed and persisted for forward-compat but no longer
- * influences `match_score` or `match_reasoning`.
+ *
+ * Removed dimensions (still computed + persisted for forward-compat, but
+ * no longer influence `match_score` or `match_reasoning`):
+ *   - budget_fit: pricing data not in the product yet.
+ *   - audience_geo: the platform isn't focused on D2C brands yet, where
+ *     state-level geo gaps actually matter. Re-enable when that workstream
+ *     starts; the v_brand_geo_gaps view + brand_shopify_geo (with synthetic
+ *     fallback from migration 20260502_brand_synthetic_geo) is wired up
+ *     and ready to plug back in by setting these weights non-zero.
+ *
+ * The dropped 0.29 audience_geo weight was redistributed proportionally
+ * to the remaining three dimensions so weights still sum to 1.0.
  */
 const WEIGHTS = {
-  niche_fit: 0.35,
-  audience_geo: 0.29,
+  niche_fit: 0.49,
+  audience_geo: 0,
   budget_fit: 0,
-  content_format: 0.18,
-  engagement_quality: 0.18,
+  content_format: 0.255,
+  engagement_quality: 0.255,
 } as const;
 
 /**
- * Weights used when the brand has a completed platform analysis.
- * Phase 2: renamed from WEIGHTS_WITH_IG. Same weights apply to whichever
- * platform the brand has analyzed (IG or YT). Retune per-platform after
- * we have pilot YT CPI data. Budget weight removed (see WEIGHTS note);
- * the old 0.10 was redistributed proportionally.
+ * Weights used when the brand has a completed platform analysis AND is
+ * NOT a D2C brand (see WEIGHTS_D2C below). Same weights apply to whichever
+ * platform the brand has analyzed (IG or YT). audience_geo dropped to 0
+ * (see WEIGHTS note); the old 0.22 was redistributed proportionally
+ * across the remaining five dimensions.
  */
 const WEIGHTS_WITH_PLATFORM_SIGNALS = {
-  niche_fit: 0.17,
-  semantic_similarity: 0.22,
-  past_collab_similarity: 0.17,
-  audience_geo: 0.22,
+  niche_fit: 0.218,
+  semantic_similarity: 0.282,
+  past_collab_similarity: 0.218,
+  audience_geo: 0,
   budget_fit: 0,
-  content_format: 0.11,
-  engagement_quality: 0.11,
+  content_format: 0.141,
+  engagement_quality: 0.141,
 } as const;
+
+/**
+ * Weights for D2C brands. D2C matching cares about purchase intent more
+ * than reach, so we surface two new dimensions:
+ *   - `audience_geo` (0.15) — shipping zones / regional demand, currently
+ *     populated synthetically when no Shopify data is available.
+ *   - `commerce_fit` (0.15) — how well the creator's lifetime sales data
+ *     (AOV, price band, brand mix) matches the brand. When the creator
+ *     is not in `creator_commerce_signals`, this returns null and its
+ *     weight is redistributed proportionally to the other dimensions
+ *     so non-CSV creators still compete fairly on niche/semantic/etc.
+ *
+ * Brand-level safety valve: if fewer than 20% of the candidate leaderboard
+ * rows have a commerce signal at scoring time, computeMatchesForBrand
+ * forces WEIGHTS_WITH_PLATFORM_SIGNALS even for d2c brands so we don't
+ * end up with a near-uniform distribution where commerce_fit is always
+ * redistributed away.
+ */
+const WEIGHTS_D2C = {
+  niche_fit: 0.18,
+  semantic_similarity: 0.20,
+  past_collab_similarity: 0.12,
+  audience_geo: 0.15,
+  budget_fit: 0,
+  content_format: 0.10,
+  engagement_quality: 0.10,
+  commerce_fit: 0.15,
+} as const;
+
+const D2C_COMMERCE_COVERAGE_FLOOR = 0.20;
 
 // Back-compat alias for tests and any external callers that imported the
 // old name. Will be removed with the shadow-column drop migration.
 const WEIGHTS_WITH_IG = WEIGHTS_WITH_PLATFORM_SIGNALS;
+
+/**
+ * Scale a weights object so it sums to 1.0 over only the keys with a
+ * present sub-score. Used when commerce_fit (or any other sub-score)
+ * is null for a creator — its weight is proportionally redistributed
+ * across the remaining dimensions so the score stays comparable.
+ *
+ * If `presentKeys` is empty (every sub-score missing), returns the
+ * input unchanged — caller will produce a 0 score, which is correct.
+ */
+export function redistributeMissingWeights(
+  weights: Record<string, number>,
+  presentKeys: string[],
+): Record<string, number> {
+  const keys = Object.keys(weights);
+  const presentSet = new Set(presentKeys);
+  const presentSum = keys.reduce(
+    (s, k) => s + (presentSet.has(k) ? weights[k] : 0),
+    0,
+  );
+  if (presentSum <= 0) return weights;
+  const scale = 1.0 / presentSum;
+  const out: Record<string, number> = {};
+  for (const k of keys) {
+    out[k] = presentSet.has(k) ? weights[k] * scale : 0;
+  }
+  return out;
+}
 
 type SocialPlatform = "instagram" | "youtube";
 
@@ -126,18 +199,60 @@ interface CreatorMatchData {
 
 // ── Exported sub-score functions (individually testable) ──────────────
 
+export interface BrandNicheInput {
+  primary_niche: string | null;
+  secondary_niche: string | null;
+  product_categories: string[];
+}
+
 /**
- * Computes niche fit between a creator and brand categories.
- * 1.0 = primary niche exact match
- * 0.8 = secondary niche exact match
- * 0.5 = niche is adjacent to a brand category
- * 0.0 = no match
+ * Computes niche fit between a creator and brand.
+ *
+ * When the brand has been LLM-classified into the shared 12-niche enum
+ * (brands.primary_niche), prefer the niche-vs-niche path:
+ *   primary↔primary exact:        1.0
+ *   primary↔secondary or sec↔pri: 0.85
+ *   secondary↔secondary:          0.7
+ *   adjacency on either side:     0.5
+ *
+ * Otherwise fall back to the legacy product_categories path so brands
+ * onboarded before niche classification keep producing match rows:
+ *   creator primary ∈ categories:  1.0
+ *   creator secondary ∈ categories: 0.8
+ *   adjacency:                     0.5
  */
 export function computeNicheFit(
   primaryNiche: string | null,
   secondaryNiche: string | null,
-  brandCategories: string[]
+  brandCategoriesOrInput: string[] | BrandNicheInput
 ): number {
+  // Brand-niche path: prefer when classification ran.
+  if (!Array.isArray(brandCategoriesOrInput)) {
+    const brand = brandCategoriesOrInput;
+    const cp = primaryNiche?.toLowerCase().trim() || null;
+    const cs = secondaryNiche?.toLowerCase().trim() || null;
+    const bp = brand.primary_niche?.toLowerCase().trim() || null;
+    const bs = brand.secondary_niche?.toLowerCase().trim() || null;
+
+    if (bp || bs) {
+      if (cp && bp && cp === bp) return 1.0;
+      if ((cp && bs && cp === bs) || (cs && bp && cs === bp)) return 0.85;
+      if (cs && bs && cs === bs) return 0.7;
+      // Adjacency check across both sides
+      const adjOf = (n: string | null) => (n && NICHE_ADJACENCY[n]) || [];
+      if (cp && (adjOf(bp).includes(cp) || adjOf(bs).includes(cp))) return 0.5;
+      if (cs && (adjOf(bp).includes(cs) || adjOf(bs).includes(cs))) return 0.5;
+      if (bp && (adjOf(cp).includes(bp) || adjOf(cs).includes(bp))) return 0.5;
+      // Fall through to product_categories below for partial signal.
+    }
+    return computeNicheFit(
+      primaryNiche,
+      secondaryNiche,
+      brand.product_categories ?? []
+    );
+  }
+
+  const brandCategories = brandCategoriesOrInput;
   if (!brandCategories.length) return 0.0;
 
   const categories = brandCategories.map((c) => c.toLowerCase().trim());
@@ -360,6 +475,109 @@ export function computeBudgetFit(
   if (maxRange === 0) return 1.0;
 
   return Math.min(1.0, overlapLength / maxRange);
+}
+
+/**
+ * Inputs for commerce-fit scoring. The creator side comes from the
+ * `creator_commerce_signals` table (built by scripts/build_commerce_signals.py
+ * from the affiliate CSV). The brand side comes from the `brands` row.
+ *
+ * Returns null when the creator has no commerce signal — caller is
+ * expected to redistribute the commerce_fit weight across other
+ * sub-scores via `redistributeMissingWeights`.
+ */
+export interface CommerceFitInputs {
+  creator: {
+    aov: number | null;
+    avg_product_price: number | null;
+    price_band: "budget" | "mid" | "premium" | null;
+    brand_diversity: number | null;
+    top_brand_categories: string[] | null;
+    total_orders: number | null;
+  } | null;
+  brand: {
+    avg_product_price: number | null;
+    budget_per_creator_min: number | null;
+    budget_per_creator_max: number | null;
+    product_categories: string[] | null;
+  };
+}
+
+/**
+ * Computes commerce fit for a creator vs brand on a 0–1 scale, or null
+ * if the creator has no commerce signal at all.
+ *
+ * Three components, equally weighted:
+ *   - price_band match: does the creator's typical product price band
+ *     overlap with the brand's avg_product_price band?
+ *   - AOV-vs-budget match: does the creator's audience pay enough to
+ *     justify the brand's budget per creator?
+ *   - category overlap: how many of the creator's top brand categories
+ *     overlap with the brand's product_categories?
+ *
+ * No category data → that component contributes 0.5 (neutral) so creators
+ * with sales but no category map aren't penalized.
+ */
+export function computeCommerceFit(input: CommerceFitInputs): number | null {
+  const { creator, brand } = input;
+  if (!creator || (creator.total_orders ?? 0) <= 0) return null;
+
+  // ── Price-band match (0–1) ──
+  let priceBandScore = 0.5;
+  const brandAvgPrice = brand.avg_product_price ?? null;
+  if (brandAvgPrice && brandAvgPrice > 0) {
+    const brandBand: "budget" | "mid" | "premium" =
+      brandAvgPrice < 800
+        ? "budget"
+        : brandAvgPrice >= 3000
+          ? "premium"
+          : "mid";
+    if (creator.price_band === brandBand) priceBandScore = 1.0;
+    else if (creator.price_band == null) priceBandScore = 0.4;
+    else {
+      // Adjacent bands → partial credit
+      const order: Record<string, number> = { budget: 0, mid: 1, premium: 2 };
+      const dist = Math.abs(order[creator.price_band] - order[brandBand]);
+      priceBandScore = dist === 1 ? 0.6 : 0.2;
+    }
+  }
+
+  // ── AOV-vs-budget match (0–1) ──
+  // The intuition: a creator whose audience averages ₹400 AOV is unlikely
+  // to convert at scale on a brand selling ₹15,000 jewellery. We score
+  // proximity of creator AOV to the midpoint of the brand's budget range
+  // (which approximates the brand's per-influencer spend, a proxy for
+  // expected per-customer revenue).
+  let aovScore = 0.5;
+  const aov = creator.aov ?? 0;
+  const budgetMid =
+    brand.budget_per_creator_min != null && brand.budget_per_creator_max != null
+      ? (brand.budget_per_creator_min + brand.budget_per_creator_max) / 2
+      : null;
+  if (aov > 0 && budgetMid != null && budgetMid > 0) {
+    const ratio = Math.min(aov, budgetMid) / Math.max(aov, budgetMid);
+    aovScore = ratio; // 0–1 proximity
+  } else if (aov > 0 && brandAvgPrice && brandAvgPrice > 0) {
+    // Fall back to brand's avg product price when budget isn't set —
+    // an AOV that's at least 30% of the brand's avg price is a reasonable
+    // floor for "this audience can afford this".
+    aovScore = Math.min(1.0, aov / brandAvgPrice);
+  }
+
+  // ── Category overlap (0–1) ──
+  let categoryScore = 0.5;
+  const creatorCats = (creator.top_brand_categories ?? []).map((c) =>
+    c.toLowerCase().trim(),
+  );
+  const brandCats = (brand.product_categories ?? []).map((c) =>
+    c.toLowerCase().trim(),
+  );
+  if (creatorCats.length > 0 && brandCats.length > 0) {
+    const overlap = creatorCats.filter((c) => brandCats.includes(c)).length;
+    categoryScore = Math.min(1.0, overlap / Math.max(1, brandCats.length));
+  }
+
+  return (priceBandScore + aovScore + categoryScore) / 3;
 }
 
 /**
@@ -647,7 +865,7 @@ export function computePercentileInPool(score: number, sortedDescScores: number[
 
 function generateMatchReasoning(
   nicheFit: number,
-  audienceGeo: number,
+  _audienceGeo: number,
   formatFit: number,
   engagementQuality: number,
   brandSafety: number,
@@ -661,12 +879,7 @@ function generateMatchReasoning(
   else if (nicheFit > 0) reasons.push("Weak niche overlap");
   else reasons.push("No niche overlap");
 
-  if (audienceGeo >= 0.7)
-    reasons.push("Strong audience in brand's target zones");
-  else if (audienceGeo > 0.4)
-    reasons.push("Good audience overlap with target regions");
-  else if (audienceGeo > 0.3)
-    reasons.push("Some audience in target regions");
+  // Geo dropped from scoring (audience_geo weight = 0); no reasoning line.
 
   if (formatFit >= 0.7)
     reasons.push("Content format strongly matches brand preference");
@@ -757,10 +970,32 @@ export async function computeMatchesForBrand(
     analysis_status: string | null;
   };
 
+  // Postgres returns `vector(1536)` columns as a serialized string
+  // (e.g. "[0.1,-0.2,...]") through PostgREST. The scoring loop checks
+  // `Array.isArray(content_embedding)` to gate semantic similarity — if
+  // we don't parse on read here, every brand looks "no-embedding" and
+  // semantic_similarity collapses to 0. This single hot-spot conversion
+  // covers every brand_platform_analyses caller in this function.
+  const parseEmbedding = (v: unknown): number[] | null => {
+    if (Array.isArray(v)) return v as number[];
+    if (typeof v === "string" && v.startsWith("[")) {
+      try {
+        const arr = JSON.parse(v);
+        return Array.isArray(arr) ? (arr as number[]) : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  };
+
   const analysesByPlatform = new Map<SocialPlatform, PlatformAnalysis>();
   for (const row of (allAnalyses ?? []) as PlatformAnalysis[]) {
     if (row.analysis_status === "completed" || row.content_embedding) {
-      analysesByPlatform.set(row.platform, row);
+      analysesByPlatform.set(row.platform, {
+        ...row,
+        content_embedding: parseEmbedding(row.content_embedding),
+      });
     }
   }
 
@@ -772,7 +1007,7 @@ export async function computeMatchesForBrand(
   ) {
     analysesByPlatform.set("instagram", {
       platform: "instagram",
-      content_embedding: brand.content_embedding ?? null,
+      content_embedding: parseEmbedding(brand.content_embedding),
       collaborators: brand.ig_collaborators ?? [],
       content_dna: brand.ig_content_dna ?? null,
       analysis_status: "completed",
@@ -780,15 +1015,25 @@ export async function computeMatchesForBrand(
   }
 
   // Narrow to the caller-specified set (if any); otherwise iterate all
-  // analyzed platforms. If the brand has NO analysis at all, fall back
-  // to a single IG pass so every existing caller keeps working.
+  // analyzed platforms. We *only* score platforms with a completed
+  // analysis — the legacy "fall back to a single IG pass when the brand
+  // has nothing" path was removed because the shadow columns it relied
+  // on were dropped in migration 048, so it produced match rows with
+  // no brand-side embedding to compare against (garbage scores).
   const wantedPlatforms: SocialPlatform[] = opts?.platforms
-    ? opts.platforms.filter((p): p is SocialPlatform =>
-        p === "instagram" || p === "youtube"
+    ? opts.platforms.filter(
+        (p): p is SocialPlatform =>
+          (p === "instagram" || p === "youtube") && analysesByPlatform.has(p)
       )
     : Array.from(analysesByPlatform.keys());
-  const platformsToScore: SocialPlatform[] =
-    wantedPlatforms.length > 0 ? wantedPlatforms : ["instagram"];
+  if (wantedPlatforms.length === 0) {
+    throw new Error(
+      `Brand ${brandId} has no completed platform analysis. Run brand ` +
+        `analysis (POST /api/brands/${brandId}/analyze?platform=instagram|youtube) ` +
+        `before computing matches.`
+    );
+  }
+  const platformsToScore: SocialPlatform[] = wantedPlatforms;
 
   // ── 2. Fetch brand_shopify_geo data (brand-level, shared) ──────────
   const { data: geoRows } = await supabase
@@ -803,14 +1048,31 @@ export async function computeMatchesForBrand(
   // twice (once per platform) with platform-specific intelligence loaded
   // each time. Multi-platform creators get two match rows, one per
   // platform, with independent scores.
-  const { data: leaderboardRows, error: lbError } = await supabase
-    .from("mv_creator_leaderboard")
-    .select("*")
-    .in("platform", platformsToScore as unknown as string[])
-    .order("cpi", { ascending: false, nullsFirst: false })
-    .limit(limit);
+  //
+  // PostgREST silently clamps a single response to 1000 rows even when
+  // .limit(N>1000) is set, so we paginate explicitly via .range() to
+  // honour the caller's limit when it exceeds 1000. Each page is 1000
+  // rows ordered by CPI desc; we stop when we hit the requested limit
+  // or the MV runs out.
+  const PAGE = 1000;
+  const leaderboardRows: unknown[] = [];
+  for (let offset = 0; offset < limit; offset += PAGE) {
+    const want = Math.min(PAGE, limit - offset);
+    const { data: page, error: lbError } = await supabase
+      .from("mv_creator_leaderboard")
+      .select("*")
+      .in("platform", platformsToScore as unknown as string[])
+      .order("cpi", { ascending: false, nullsFirst: false })
+      .range(offset, offset + want - 1);
+    if (lbError) {
+      throw new Error(`Leaderboard fetch failed: ${lbError.message}`);
+    }
+    if (!page || page.length === 0) break;
+    leaderboardRows.push(...page);
+    if (page.length < want) break; // ran out of rows
+  }
 
-  if (lbError || !leaderboardRows?.length) {
+  if (!leaderboardRows.length) {
     return 0; // No creators to match against
   }
 
@@ -848,28 +1110,98 @@ export async function computeMatchesForBrand(
   // migration 047. A creator on both IG and YT has distinct rows on each
   // of these tables. We pull both platforms in one call and key the maps
   // by `${creator_id}:${platform}` below.
-  const [captionResult, audienceResult, scoresResult, transcriptResult] = await Promise.all([
-    supabase
-      .from("caption_intelligence")
-      .select("creator_id, platform, primary_niche, secondary_niche, primary_tone, secondary_tone, formality_score, engagement_bait_score, vulnerability_openness, recurring_topics, brand_categories, data_quality")
-      .in("creator_id", creatorIds)
-      .in("platform", platformsToScore as unknown as string[]),
-    supabase
-      .from("audience_intelligence")
-      .select("creator_id, platform, geo_regions, authenticity_score, suspicious_patterns, sentiment_score, negative_themes, estimated_age_group, data_quality")
-      .in("creator_id", creatorIds)
-      .in("platform", platformsToScore as unknown as string[]),
-    supabase
-      .from("creator_scores")
-      .select("creator_id, platform, engagement_quality, content_mix, brand_mentions, professionalism, content_quality, sponsored_post_rate, sponsored_vs_organic_delta, creator_reply_rate")
-      .in("creator_id", creatorIds)
-      .in("platform", platformsToScore as unknown as string[]),
-    supabase
-      .from("transcript_intelligence")
-      .select("creator_id, platform, primary_spoken_language")
-      .in("creator_id", creatorIds)
-      .in("platform", platformsToScore as unknown as string[]),
+  //
+  // Chunk the .in("creator_id", ...) filters: with the full-pool scoring
+  // path passing 6500+ UUIDs, a single .in() call generates a URL that
+  // PostgREST rejects (or silently truncates the result), which empties
+  // the intel maps and pins every match's brand_safety to null. Each
+  // chunk is sent as a separate request and the rows are concatenated.
+  const CHUNK = 250;
+  const platformFilter = platformsToScore as unknown as string[];
+  async function fetchInChunks<T>(
+    selectFn: (chunk: string[]) => PromiseLike<{ data: T[] | null; error: unknown }>,
+  ): Promise<T[]> {
+    if (creatorIds.length === 0) return [];
+    const chunks: string[][] = [];
+    for (let i = 0; i < creatorIds.length; i += CHUNK) {
+      chunks.push(creatorIds.slice(i, i + CHUNK));
+    }
+    const results = await Promise.all(chunks.map(selectFn));
+    const rows: T[] = [];
+    for (const r of results) {
+      if (r.error) {
+        throw new Error(
+          `Intel fetch failed: ${JSON.stringify(r.error)}`
+        );
+      }
+      if (r.data) rows.push(...r.data);
+    }
+    return rows;
+  }
+
+  const [captionRows, audienceRows, scoresRows, transcriptRows, commerceRows] = await Promise.all([
+    fetchInChunks((chunk) =>
+      supabase
+        .from("caption_intelligence")
+        .select(
+          "creator_id, platform, primary_niche, secondary_niche, primary_tone, secondary_tone, formality_score, engagement_bait_score, vulnerability_openness, recurring_topics, brand_categories, data_quality"
+        )
+        .in("creator_id", chunk)
+        .in("platform", platformFilter),
+    ),
+    fetchInChunks((chunk) =>
+      supabase
+        .from("audience_intelligence")
+        .select(
+          "creator_id, platform, geo_regions, authenticity_score, suspicious_patterns, sentiment_score, negative_themes, estimated_age_group, data_quality"
+        )
+        .in("creator_id", chunk)
+        .in("platform", platformFilter),
+    ),
+    fetchInChunks((chunk) =>
+      supabase
+        .from("creator_scores")
+        .select(
+          "creator_id, platform, engagement_quality, content_mix, brand_mentions, professionalism, content_quality, sponsored_post_rate, sponsored_vs_organic_delta, creator_reply_rate"
+        )
+        .in("creator_id", chunk)
+        .in("platform", platformFilter),
+    ),
+    fetchInChunks((chunk) =>
+      supabase
+        .from("transcript_intelligence")
+        .select("creator_id, platform, primary_spoken_language")
+        .in("creator_id", chunk)
+        .in("platform", platformFilter),
+    ),
+    // Commerce signals are aggregated per creator (not per platform), so
+    // we don't filter on platformFilter here. The map is keyed by
+    // creator_id alone in the scoring loop below.
+    fetchInChunks((chunk) =>
+      // Cast: creator_commerce_signals is added by migration 058 and isn't
+      // in the generated `Database` types until they're regenerated.
+      (supabase as unknown as {
+        from: (t: string) => {
+          select: (s: string) => {
+            in: (col: string, vals: string[]) => PromiseLike<{
+              data: Array<Record<string, unknown>> | null;
+              error: unknown;
+            }>;
+          };
+        };
+      })
+        .from("creator_commerce_signals")
+        .select(
+          "creator_id, lifetime_gmv, total_orders, total_clicks, aov, click_to_order_rate, avg_product_price, brand_diversity, top_brand_categories, price_band, n_posts_with_orders",
+        )
+        .in("creator_id", chunk),
+    ),
   ]);
+  // Preserve the .data shape so the row-mapping code below stays unchanged.
+  const captionResult = { data: captionRows };
+  const audienceResult = { data: audienceRows };
+  const scoresResult = { data: scoresRows };
+  const transcriptResult = { data: transcriptRows };
 
   // Intelligence rows created before migration 047 don't have a
   // `platform` column selected — default to 'instagram' so pre-migration
@@ -941,6 +1273,51 @@ export async function computeMatchesForBrand(
     transcriptMap.set(key(row.creator_id, row.platform), row);
   }
 
+  // ── 4b'. Commerce signals (migration 058, keyed per creator) ──────
+  type CommerceRow = {
+    aov: number | null;
+    avg_product_price: number | null;
+    price_band: "budget" | "mid" | "premium" | null;
+    brand_diversity: number | null;
+    top_brand_categories: string[] | null;
+    total_orders: number | null;
+  };
+  const commerceMap = new Map<string, CommerceRow>();
+  for (const row of (commerceRows ?? []) as Array<
+    { creator_id: string } & Record<string, unknown>
+  >) {
+    commerceMap.set(row.creator_id, {
+      aov: (row.aov as number | null) ?? null,
+      avg_product_price: (row.avg_product_price as number | null) ?? null,
+      price_band:
+        (row.price_band as "budget" | "mid" | "premium" | null) ?? null,
+      brand_diversity: (row.brand_diversity as number | null) ?? null,
+      top_brand_categories:
+        (row.top_brand_categories as string[] | null) ?? null,
+      total_orders: (row.total_orders as number | null) ?? null,
+    });
+  }
+
+  // Brand-level D2C coverage check: if fewer than 20% of candidates have
+  // a commerce signal, force WEIGHTS_WITH_PLATFORM_SIGNALS even for D2C
+  // brands so the redistributed-weights tier doesn't dominate the cohort.
+  const brandTypeRaw = (brand as Record<string, unknown>).brand_type;
+  const brandIsD2c = brandTypeRaw === "d2c";
+  const commerceCoverageRate =
+    creatorIds.length > 0
+      ? commerceMap.size / creatorIds.length
+      : 0;
+  const useD2cWeights =
+    brandIsD2c && commerceCoverageRate >= D2C_COMMERCE_COVERAGE_FLOOR;
+  if (brandIsD2c && !useD2cWeights) {
+    console.warn(
+      `low_commerce_coverage_fallback: brand ${brandId} is d2c but only ` +
+        `${(commerceCoverageRate * 100).toFixed(1)}% of ${creatorIds.length} ` +
+        `candidates have commerce signals (floor=${D2C_COMMERCE_COVERAGE_FLOOR * 100}%); ` +
+        `using non-d2c weights for this run.`,
+    );
+  }
+
   // ── 4c. Per-platform creator embeddings (migration 046) ────────────
   // Load the per-platform creator_content_embeddings table keyed by
   // (creator_id, platform). The scoring loop below pulls the embedding
@@ -952,17 +1329,38 @@ export async function computeMatchesForBrand(
     (a) => Array.isArray(a.content_embedding) && a.content_embedding.length > 0,
   );
   if (anyBrandHasAnalysis) {
-    const { data: embRows } = await supabase
-      .from("creator_content_embeddings")
-      .select("creator_id, platform, embedding")
-      .in("creator_id", creatorIds)
-      .in("platform", platformsToScore as unknown as string[]);
-    for (const row of (embRows ?? []) as Array<{
-      creator_id: string;
-      platform: string;
-      embedding: number[] | null;
-    }>) {
-      creatorEmbeddingMap.set(key(row.creator_id, row.platform), row.embedding);
+    // `creator_embeddings` (populated by scripts/embed_creators.py + the
+    // pipeline's embed-on-write hook) is the production source of per-
+    // platform creator content embeddings. The original `creator_content_embeddings`
+    // table from migration 046 was never backfilled — left empty in
+    // favour of `creator_embeddings`.
+    //
+    // Same chunking story as the intel fetches above — but a smaller
+    // chunk because each row carries a 1536-dim vector (~25KB JSON).
+    const EMB_CHUNK = 100;
+    const embedChunks: string[][] = [];
+    for (let i = 0; i < creatorIds.length; i += EMB_CHUNK) {
+      embedChunks.push(creatorIds.slice(i, i + EMB_CHUNK));
+    }
+    const embedResults = await Promise.all(
+      embedChunks.map((chunk) =>
+        supabase
+          .from("creator_embeddings" as never)
+          .select("creator_id, platform, embedding")
+          .in("creator_id", chunk)
+          .in("platform", platformsToScore as unknown as string[]),
+      ),
+    );
+    for (const r of embedResults) {
+      const data = r.data as
+        | Array<{ creator_id: string; platform: string; embedding: unknown }>
+        | null;
+      for (const row of data ?? []) {
+        creatorEmbeddingMap.set(
+          key(row.creator_id, row.platform),
+          parseEmbedding(row.embedding),
+        );
+      }
     }
   }
 
@@ -1044,6 +1442,15 @@ export async function computeMatchesForBrand(
 
   // ── 5. Compute match scores for each creator ───────────────────────
   const brandCategories = brand.product_categories ?? [];
+  const brandWithNiche = brand as Brand & {
+    primary_niche?: string | null;
+    secondary_niche?: string | null;
+  };
+  const brandNiche: BrandNicheInput = {
+    primary_niche: brandWithNiche.primary_niche ?? null,
+    secondary_niche: brandWithNiche.secondary_niche ?? null,
+    product_categories: brandCategories,
+  };
   const matchRows: Database["public"]["Tables"]["creator_brand_matches"]["Insert"][] =
     [];
 
@@ -1100,7 +1507,7 @@ export async function computeMatchesForBrand(
     const nicheFit = computeNicheFit(
       primaryNiche,
       secondaryNiche,
-      brandCategories
+      brandNiche
     );
     // State-level gap overlap (replaces zone-opportunity blending).
     //   - Σ creator_state_share × brand_state_gap_weight
@@ -1227,10 +1634,30 @@ export async function computeMatchesForBrand(
         ? audienceIntel!.data_quality!.confidence!
         : null;
 
-    const baseWeights: Record<string, number> = hasAnalysisForPlatform
-      ? { ...WEIGHTS_WITH_PLATFORM_SIGNALS }
-      : { ...WEIGHTS };
-    const subScoreValues: Record<string, number> = hasAnalysisForPlatform
+    // ── Commerce fit (D2C only, when coverage floor met) ──────────
+    // commerceFit is null when the creator has no signal — its weight
+    // is then redistributed proportionally across the rest via
+    // redistributeMissingWeights, keeping non-CSV creators competitive.
+    const commerceRow = commerceMap.get(creator.creator_id);
+    const commerceFit =
+      useD2cWeights && hasAnalysisForPlatform
+        ? computeCommerceFit({
+            creator: commerceRow ?? null,
+            brand: {
+              avg_product_price: brand.avg_product_price ?? null,
+              budget_per_creator_min: brand.budget_per_creator_min ?? null,
+              budget_per_creator_max: brand.budget_per_creator_max ?? null,
+              product_categories: brand.product_categories ?? null,
+            },
+          })
+        : null;
+
+    const baseWeights: Record<string, number> = useD2cWeights
+      ? { ...WEIGHTS_D2C }
+      : hasAnalysisForPlatform
+        ? { ...WEIGHTS_WITH_PLATFORM_SIGNALS }
+        : { ...WEIGHTS };
+    const subScoreValues: Record<string, number | null> = useD2cWeights
       ? {
           niche_fit: nicheFit,
           semantic_similarity: semanticSimilarity,
@@ -1239,24 +1666,47 @@ export async function computeMatchesForBrand(
           budget_fit: budgetFit,
           content_format: formatFit,
           engagement_quality: engagementQuality,
+          commerce_fit: commerceFit,
         }
-      : {
-          niche_fit: nicheFit,
-          audience_geo: audienceGeo,
-          budget_fit: budgetFit,
-          content_format: formatFit,
-          engagement_quality: engagementQuality,
-        };
+      : hasAnalysisForPlatform
+        ? {
+            niche_fit: nicheFit,
+            semantic_similarity: semanticSimilarity,
+            past_collab_similarity: pastCollabSimilarity,
+            audience_geo: audienceGeo,
+            budget_fit: budgetFit,
+            content_format: formatFit,
+            engagement_quality: engagementQuality,
+          }
+        : {
+            niche_fit: nicheFit,
+            audience_geo: audienceGeo,
+            budget_fit: budgetFit,
+            content_format: formatFit,
+            engagement_quality: engagementQuality,
+          };
+
+    // Redistribute weight away from any sub-score that came back null
+    // (today: just commerce_fit; future-proofed for other null returns).
+    const presentSubScoreKeys = Object.entries(subScoreValues)
+      .filter(([, v]) => v != null)
+      .map(([k]) => k);
+    const rebalancedWeights = redistributeMissingWeights(
+      baseWeights,
+      presentSubScoreKeys,
+    );
 
     const { adjusted: adjustedWeights, effective_confidence: matchConfidence } =
-      applyDataQualityAdjustments(baseWeights, {
+      applyDataQualityAdjustments(rebalancedWeights, {
         caption_confidence: captionConfidence,
         audience_confidence: audienceConfidence,
       });
 
     let rawScore = 0;
     for (const key of Object.keys(adjustedWeights)) {
-      rawScore += (subScoreValues[key] ?? 0) * adjustedWeights[key];
+      const v = subScoreValues[key];
+      if (v == null) continue;
+      rawScore += v * adjustedWeights[key];
     }
 
     const finalScore = Math.min(
@@ -1358,6 +1808,10 @@ export async function computeMatchesForBrand(
       budget_fit: budgetFit,
       content_format: formatFit,
       engagement_quality: engagementQuality,
+      // commerce_fit is null when the creator has no commerce signal OR
+      // when the brand isn't D2C — UI should distinguish these from a
+      // computed 0.0 score.
+      commerce_fit: commerceFit,
       brand_safety: brandSafety.score,
       brand_safety_sufficient_count: brandSafety.sufficient_count,
       brand_safety_confidence: brandSafety.confidence,
@@ -1366,7 +1820,11 @@ export async function computeMatchesForBrand(
       past_collab_similarity: pastCollabSimilarity,
       theme_overlap_bonus: themeOverlapBonus,
       collab_network_bonus: collabNetworkBonus,
-      weights: hasAnalysisForPlatform ? "with_platform_signals" : "legacy",
+      weights: useD2cWeights
+        ? "d2c"
+        : hasAnalysisForPlatform
+          ? "with_platform_signals"
+          : "legacy",
       weights_adjusted: adjustedWeights,
       data_quality: {
         caption_confidence: captionConfidence,
@@ -1374,9 +1832,8 @@ export async function computeMatchesForBrand(
       },
     };
 
-    // `used_platform_signals` replaces `used_ig_signals` post-migration-046.
-    // IG path keeps the shadow bool for one release so any reader that
-    // predates the refactor still works.
+    // `used_platform_signals` (jsonb) is the post-migration-046 shape.
+    // The legacy `used_ig_signals` shadow bool was dropped in migration 048.
     const usedPlatformSignals: Record<string, boolean> = {
       [creatorPlatform]: hasAnalysisForPlatform,
     };
@@ -1398,7 +1855,6 @@ export async function computeMatchesForBrand(
       recommended_for: recommendedFor,
       match_reasoning: reasoning,
       match_score_breakdown: breakdown as unknown as Database["public"]["Tables"]["creator_brand_matches"]["Insert"]["match_score_breakdown"],
-      used_ig_signals: creatorPlatform === "instagram" && hasAnalysisForPlatform,
       // Generated types haven't picked up `used_platform_signals` (added in
       // migration 046) yet, so cast through unknown to keep the build green
       // until types are regenerated.

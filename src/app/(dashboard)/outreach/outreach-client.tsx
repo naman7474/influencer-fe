@@ -35,6 +35,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { ComposeModal } from "./compose-modal";
 import { MessageDetail } from "./message-detail";
+import { MatchScoreChip } from "@/components/outreach/match-score-chip";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -46,9 +47,12 @@ interface ThreadItem {
   last_message_at: string | null;
   last_message_preview: string | null;
   last_message_direction: string | null;
+  last_message_channel: string | null;
   unread_count: number;
   outreach_status: string;
   campaign_id: string | null;
+  assigned_to_user_id: string | null;
+  match_score: number | null;
   creators: {
     id: string;
     handle: string;
@@ -58,6 +62,12 @@ interface ThreadItem {
   };
   campaigns: { id: string; name: string } | null;
 }
+
+type Member = {
+  user_id: string;
+  display_name: string | null;
+  email: string | null;
+};
 
 interface Props {
   brand: {
@@ -136,6 +146,17 @@ export function OutreachClient({ brand, campaigns }: Props) {
   const [campaignFilter, setCampaignFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [composeOpen, setComposeOpen] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+
+  useEffect(() => {
+    fetch("/api/team/members")
+      .then((r) => r.json())
+      .then((d) => setMembers(d.members ?? []))
+      .catch(() => {});
+  }, []);
+
+  const memberById = new Map(members.map((m) => [m.user_id, m]));
+
   const [prefillCreator, setPrefillCreator] = useState<{
     id: string;
     handle: string;
@@ -330,6 +351,7 @@ export function OutreachClient({ brand, campaigns }: Props) {
                       thread={thread}
                       isActive={thread.id === selectedThreadId}
                       onClick={() => setSelectedThreadId(thread.id)}
+                      memberById={memberById}
                     />
                   ))}
                 </div>
@@ -349,6 +371,7 @@ export function OutreachClient({ brand, campaigns }: Props) {
                       thread={thread}
                       isActive={thread.id === selectedThreadId}
                       onClick={() => setSelectedThreadId(thread.id)}
+                      memberById={memberById}
                     />
                   ))}
                 </>
@@ -410,13 +433,19 @@ function ThreadListItem({
   thread,
   isActive,
   onClick,
+  memberById,
 }: {
   thread: ThreadItem;
   isActive: boolean;
   onClick: () => void;
+  memberById: Map<string, Member>;
 }) {
   const isUnread = thread.unread_count > 0;
   const creator = thread.creators;
+  const assignee = thread.assigned_to_user_id
+    ? memberById.get(thread.assigned_to_user_id)
+    : null;
+  const channel = thread.last_message_channel;
 
   return (
     <button
@@ -443,6 +472,7 @@ function ThreadListItem({
               @{creator.handle}
             </span>
             <div className="flex items-center gap-1.5 shrink-0">
+              <MatchScoreChip score={thread.match_score} size="xs" />
               <StatusIcon status={thread.outreach_status} />
               <span className="text-[11px] text-muted-foreground">
                 {timeAgo(thread.last_message_at)}
@@ -468,6 +498,28 @@ function ThreadListItem({
               {thread.last_message_direction === "outbound" ? "You: " : ""}
               {thread.last_message_preview}
             </p>
+          )}
+
+          {(channel || assignee) && (
+            <div className="flex items-center gap-1.5 mt-1.5">
+              {channel && (
+                <span
+                  className={cn(
+                    "inline-flex items-center text-[9px] font-medium px-1.5 py-0.5 rounded-md uppercase tracking-wide",
+                    channel === "instagram_dm"
+                      ? "bg-pink-500/10 text-pink-600 dark:text-pink-400"
+                      : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                  )}
+                >
+                  {channel === "instagram_dm" ? "IG" : "Email"}
+                </span>
+              )}
+              {assignee && (
+                <span className="inline-flex items-center text-[10px] text-muted-foreground">
+                  · {assignee.display_name ?? assignee.email ?? "Assigned"}
+                </span>
+              )}
+            </div>
           )}
         </div>
       </div>
